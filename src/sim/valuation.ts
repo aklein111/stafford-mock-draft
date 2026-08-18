@@ -1,0 +1,121 @@
+// Turns a bot's fixed personality (botTraits.ts) into (a) a private
+// valuation of every player, drawn once at draft start (§3.2), and (b) the
+// situational adjustments applied at bid time (§3.3-§3.5).
+
+import type { DraftState } from './draftState'
+import type { Player, Position } from './types'
+import { openSlots, pickSlotFor, type Team } from './roster'
+import type { RNG } from './rng'
+import { randNormal } from './rng'
+import type { BotTraits } from './botTraits'
+import {
+  CENTERING,
+  FLEX_OR_BENCH_NEED_FACTOR,
+  INFLATION_DAMPING,
+  LATE_DRAFT_MAX_BOOST,
+  LATE_DRAFT_SLOTS_THRESHOLD,
+  LOCK_IN_MAX_BOOST,
+  LOCK_IN_MIN_BOOST,
+  LOCK_IN_PROBABILITY,
+  NOISE_K,
+  POOR_PER_SLOT_THRESHOLD,
+  RICH_PER_SLOT_BOOST,
+  RICH_PER_SLOT_THRESHOLD,
+  UNMATCHED_YAHOO_NOISE_MULT,
+} from './constants'
+
+export function playerKey(player: Player): string {
+  return `${player.name}|${player.team}`
+}
+
+// §3.2 — each bot's private, persistent valuation of every player.
+export function buildBotValuations(players: Player[], traits: BotTraits, rng: RNG): Map<string, number> {
+  const values = new Map<string, number>()
+  for (const player of players) {
+    const base = player.expected + CENTERING
+    const posMult = traits.positionBias[player.pos]
+    const starMult = 1 + traits.starPreference * (player.expected / 70)
+    const noiseWidth =
+      player.sd * traits.noiseScale * NOISE_K * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
+    const noise = randNormal(rng, 0, noiseWidth)
+    const value = (base * posMult * starMult + noise) * traits.aggression
+    values.set(playerKey(player), Math.max(0, value))
+  }
+  return values
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+// §4.1 — how far off "par" clearing prices run at this point in the draft.
+// The 10-element `timingMultiplier` array is the finer-grained, overall
+// curve; `positionTiming` gives the same shape per position but only as
+// three anchor points (early/mid/late). We use the decile curve as the
+// baseline and blend in the position curve (interpolated smoothly between
+// its anchors) as a positional adjustment on top of it. DEF has no
+// position-specific curve in the data, so it falls back to the overall
+// curve alone.
+export function timingFactor(state: DraftState, pos: Position): number {
+  const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
+  const progress = totalSlots > 0 ? Math.min(1, state.pickNumber / totalSlots) : 0
+  const decile = Math.min(9, Math.floor(progress * 10))
+  const overall = state.data.calibration.timingMultiplier[decile] ?? 1
+
+  const pt = state.data.calibration.positionTiming[pos]
+  if (!pt) return overall
+
+  const positional =
+    progress <= 0.5 ? lerp(pt.early, pt.mid, progress / 0.5) : lerp(pt.mid, pt.late, (progress - 0.5) / 0.5)
+  return (overall + positional) / 2
+}
+
+// §4.2 — live inflation: how much money is left on the table relative to
+// what the remaining players are nominally worth.
+export function computeInflation(state: DraftState): number {
+  const remainingBudget = state.teams.reduce((sum, t) => sum + (t.budget - t.spent), 0)
+  const remainingExpected = state.undrafted.reduce((sum, p) => sum + p.expected, 0)
+  if (remainingExpected <= 0) return 1
+  return remainingBudget / remainingExpected
+}
+
+// Damped so bots react to inflation without perfectly correcting for it.
+export function inflationFactor(inflation: number): number {
+  return 1 + INFLATION_DAMPING * (inflation - 1)
+}
+
+function dollarsPerSlot(team: Team): number {
+  return (team.budget - team.spent) / Math.max(openSlots(team).length, 1)
+}
+
+// §3.4 — roster need. Whether a team is even eligible to bid at all is
+// enforced centrally by the engine before any of this runs (see
+// engine.ts); this only decides how *eager* an eligible team is.
+export function needFactor(team: Team, player: Player, disciplineDecay: number): number {
+  const slot = pickSlotFor(team, player.pos)
+  let factor = slot && slot.type === player.pos ? 1.0 : FLEX_OR_BENCH_NEED_FACTOR
+
+  const remaining = openSlots(team).length
+  const hasUnfilledStarter = team.slots.some((s) => s.filled === null && s.type !== 'BENCH')
+  if (remaining < LATE_DRAFT_SLOTS_THRESHOLD && hasUnfilledStarter) {
+    const boost = LATE_DRAFT_MAX_BOOST * Math.min(1, disciplineDecay / 1.5)
+    factor = Math.max(factor, 1 + boost)
+  }
+
+  if (dollarsPerSlot(team) > RICH_PER_SLOT_THRESHOLD) factor *= 1 + RICH_PER_SLOT_BOOST
+
+  return factor
+}
+
+export function isPoorPerSlot(team: Team): boolean {
+  return dollarsPerSlot(team) < POOR_PER_SLOT_THRESHOLD
+}
+
+// §3.5 — occasional irrationality: ~8% chance per player a bot gets
+// "locked in" and pays 10-25% over its usual number.
+export function rollLockIn(rng: RNG): number {
+  if (rng() < LOCK_IN_PROBABILITY) {
+    return 1 + LOCK_IN_MIN_BOOST + rng() * (LOCK_IN_MAX_BOOST - LOCK_IN_MIN_BOOST)
+  }
+  return 1
+}

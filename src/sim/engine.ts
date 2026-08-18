@@ -1,45 +1,81 @@
 import type { DraftState } from './draftState'
 import { assignPlayer, canBidOnPosition, isRosterFull, legalMaxBid, type Team } from './roster'
 import type { Player } from './types'
-import { nextNominator, defaultNominationStrategy } from './nomination'
+import { nextNominator, defaultNominationStrategy, type NominationStrategy } from './nomination'
 import type { MaxBidFn } from './bots'
+import { DROP_EARLY_PROBABILITY, HESITATION_ZONE } from './constants'
 
 export interface AuctionResult {
   winner: Team | null
   price: number
 }
 
-// Resolves one player's auction from every eligible team's private max bid,
-// as a sealed-bid second-price auction: the highest bidder wins, but pays
-// only $1 more than the next-highest competing bid (or the $1 minimum if
-// they were the only bidder). Bids are always capped at the team's legal
-// max bid (spec §1), so this can never let a team overspend.
-//
-// The moment-to-moment mechanics of a live auction — response delay,
-// hesitation near a bidder's limit, bidding wars (spec §3.6) — are a
-// presentation-layer concern for a later phase; what the engine needs to
-// get right is who wins and at what price.
-export function resolveAuction(state: DraftState, player: Player, maxBidFn: MaxBidFn): AuctionResult {
-  // Roster eligibility (spec §1: "a team that has filled a position group
-  // cannot bid on it") is enforced here, not left up to maxBidFn, so no bot
-  // implementation can accidentally violate it.
-  const bids: { team: Team; maxBid: number }[] = []
+interface Bid {
+  team: Team
+  maxBid: number
+}
+
+// Gathers every eligible team's max bid for this player. Roster eligibility
+// (spec §1: "a team that has filled a position group cannot bid on it") is
+// enforced here, not left up to maxBidFn, so no bot implementation can
+// accidentally violate it. Bids are always capped at the team's legal max
+// bid (spec §1), so this can never let a team overspend.
+function gatherBids(state: DraftState, player: Player, maxBidFn: MaxBidFn): Bid[] {
+  const bids: Bid[] = []
   for (const team of state.teams) {
     if (isRosterFull(team)) continue
     if (!canBidOnPosition(team, player.pos)) continue
-    const raw = maxBidFn(team, player)
+    const raw = maxBidFn(state, team, player)
     const capped = Math.min(raw, legalMaxBid(team))
     if (capped >= 1) bids.push({ team, maxBid: capped })
   }
+  return bids
+}
 
-  if (bids.length === 0) return { winner: null, price: 0 }
-
-  bids.sort((a, b) => b.maxBid - a.maxBid)
+// The highest bidder wins, but pays only $1 more than the next-highest
+// competing bid (or the $1 minimum if they were the only bidder) — the
+// standard result of an English auction where everyone raises as long as
+// it's worth it to them. `bids` must already be sorted highest-first.
+function settleBids(bids: Bid[]): AuctionResult {
   const winner = bids[0].team
   const winnerMaxBid = bids[0].maxBid
   const secondBid = bids.length > 1 ? bids[1].maxBid : 0
   const price = Math.max(1, Math.min(winnerMaxBid, secondBid + 1))
   return { winner, price }
+}
+
+// Sealed-bid resolution: no live-auction noise, just the bids as given.
+// Used directly by tests and as the deterministic core that
+// resolveLiveAuction builds on.
+export function resolveAuction(state: DraftState, player: Player, maxBidFn: MaxBidFn): AuctionResult {
+  const bids = gatherBids(state, player, maxBidFn)
+  if (bids.length === 0) return { winner: null, price: 0 }
+  bids.sort((a, b) => b.maxBid - a.maxBid)
+  return settleBids(bids)
+}
+
+// Live-auction resolution: same math as resolveAuction, plus one piece of
+// §3.6's bidding mechanics that actually changes a clearing price — a
+// bidder near the top of their range sometimes folds $1 short of their
+// true max rather than pushing all the way to it. (Response delay,
+// hesitation "beats", and the occasional opening jump to scare off casual
+// interest are about the pacing/feel of a *live* auction and don't change
+// who wins or what they pay in a sealed max-bid model, so they're left for
+// a future UI to render as pacing rather than simulated here.)
+export function resolveLiveAuction(state: DraftState, player: Player, maxBidFn: MaxBidFn): AuctionResult {
+  const bids = gatherBids(state, player, maxBidFn)
+  if (bids.length === 0) return { winner: null, price: 0 }
+  bids.sort((a, b) => b.maxBid - a.maxBid)
+
+  if (bids.length > 1) {
+    const gapToTop = bids[0].maxBid - bids[1].maxBid
+    if (gapToTop <= HESITATION_ZONE && state.rng() < DROP_EARLY_PROBABILITY) {
+      bids[1].maxBid = Math.max(0, bids[1].maxBid - 1)
+      bids.sort((a, b) => b.maxBid - a.maxBid)
+    }
+  }
+
+  return settleBids(bids)
 }
 
 export function isDraftComplete(state: DraftState): boolean {
@@ -56,17 +92,17 @@ function removeFromUndrafted(state: DraftState, player: Player) {
 export function runDraftStep(
   state: DraftState,
   maxBidFn: MaxBidFn,
-  nominate: (state: DraftState) => Player | null = defaultNominationStrategy,
+  nominate: NominationStrategy = defaultNominationStrategy,
 ): boolean {
   if (isDraftComplete(state)) return false
 
   const nominator = nextNominator(state)
   if (!nominator) return false
 
-  const player = nominate(state)
+  const player = nominate(state, nominator)
   if (!player) return false
 
-  const result = resolveAuction(state, player, maxBidFn)
+  const result = resolveLiveAuction(state, player, maxBidFn)
   state.pickNumber += 1
   removeFromUndrafted(state, player)
 
@@ -88,7 +124,7 @@ export function runDraftStep(
 export function runFullDraft(
   state: DraftState,
   maxBidFn: MaxBidFn,
-  nominate: (state: DraftState) => Player | null = defaultNominationStrategy,
+  nominate: NominationStrategy = defaultNominationStrategy,
   maxSteps = 10000,
 ): DraftState {
   let steps = 0

@@ -108,7 +108,7 @@ describe('auction resolution', () => {
       createTeam(2, 'B', 200, ['RB'], 0),
     ]
     const bids: Record<number, number> = { 1: 40, 2: 25 }
-    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), (team) => bids[team.id])
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), (_state, team) => bids[team.id])
     expect(result.winner?.id).toBe(1)
     expect(result.price).toBe(26)
   })
@@ -116,7 +116,7 @@ describe('auction resolution', () => {
   it('a lone bidder pays the $1 minimum', () => {
     const state = createInitialState(draftData, 1)
     state.teams = [createTeam(1, 'A', 200, ['RB'], 0), createTeam(2, 'B', 200, ['WR'], 0)]
-    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), (team) => (team.id === 1 ? 40 : 0))
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), (_state, team) => (team.id === 1 ? 40 : 0))
     expect(result.winner?.id).toBe(1)
     expect(result.price).toBe(1)
   })
