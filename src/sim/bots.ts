@@ -70,14 +70,16 @@ export function createBotStates(
   }))
 }
 
-// The full maxBid function (spec §3.3, capped per REVISIONS.md Fix 2a):
-// the bot's private anchor valuation, adjusted by where we are in the
-// draft, this team's roster need, live inflation, and a per-player roll
-// for "locked in" irrationality — then capped at what the bot's own
-// budget plan has reserved for every other slot it still needs to fill.
-// The engine separately enforces the hard legal-max-bid floor on top of
-// this, so neither this function nor its caller needs to worry about a
-// team going roster-incomplete.
+// The full maxBid function (spec §3.3, adjusted per REVISIONS.md Fixes
+// 2a-2b): the bot's private anchor valuation, adjusted by where we are in
+// the draft, this team's roster need, live inflation, and a per-player
+// roll for "locked in" irrationality — scaled down by the bot's restraint
+// (Fix 2b: a real manager sets a number and stops, rather than pushing to
+// the edge of what it can technically afford) — then capped at what the
+// bot's own budget plan has reserved for every other slot it still needs
+// to fill (Fix 2a). The engine separately enforces the hard legal-max-bid
+// floor on top of all of this, so neither this function nor its caller
+// needs to worry about a team going roster-incomplete.
 // backupQbFactor passes straight through to needFactor.
 export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
@@ -92,7 +94,7 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const inflation = inflationFactor(computeInflation(state))
     const lockIn = rollLockIn(state.rng)
 
-    let maxBid = anchor * timing * need * inflation * lockIn
+    let maxBid = anchor * timing * need * inflation * lockIn * bot.traits.restraint
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
     const plannedCap = computePlannedMaxBid(team, player, bot.budgetPlan)

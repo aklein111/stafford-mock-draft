@@ -27,6 +27,8 @@ describe('bot traits (spec §3.1)', () => {
       expect(t.disciplineDecay).toBeLessThanOrEqual(1.5)
       expect(t.noiseScale).toBeGreaterThanOrEqual(0.7)
       expect(t.noiseScale).toBeLessThanOrEqual(1.3)
+      expect(t.restraint).toBeGreaterThanOrEqual(0.85)
+      expect(t.restraint).toBeLessThanOrEqual(0.95)
       for (const pos of ['QB', 'RB', 'WR', 'TE', 'DEF'] as const) {
         expect(t.positionBias[pos]).toBeGreaterThan(0)
       }

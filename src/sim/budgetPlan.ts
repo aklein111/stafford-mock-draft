@@ -18,6 +18,12 @@ import type { Player } from './types'
 
 export type BudgetPlanArchetype = 'STARS_AND_SCRUBS' | 'BALANCED' | 'EVEN_SPREAD'
 
+export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
+  STARS_AND_SCRUBS: 'Stars and scrubs',
+  BALANCED: 'Balanced budget',
+  EVEN_SPREAD: 'Spreads it evenly',
+}
+
 // Higher decay = steeper drop-off from the plan's biggest slot to its
 // smallest (stars-and-scrubs); close to 1 = nearly flat (spreads evenly).
 // BALANCED is the default for most of the room, per REVISIONS.md: "one

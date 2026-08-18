@@ -1,5 +1,6 @@
 import type { DraftController } from './useDraftController'
 import { ARCHETYPE_LABELS } from '../sim/botTraits'
+import { BUDGET_PLAN_LABELS } from '../sim/budgetPlan'
 import type { Position } from '../sim/types'
 
 const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE', 'DEF']
@@ -125,11 +126,12 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
               <div key={bot.teamId} style={{ background: '#161a22', borderRadius: '6px', padding: '0.75rem' }}>
                 <div style={{ fontWeight: 600 }}>{team.name}</div>
                 <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  {ARCHETYPE_LABELS[bot.archetype]}
+                  {ARCHETYPE_LABELS[bot.archetype]} · {BUDGET_PLAN_LABELS[bot.budgetPlanArchetype]}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#9ca3af' }}>
-                  aggression {bot.traits.aggression.toFixed(2)} · star pref {bot.traits.starPreference.toFixed(2)} ·
-                  discipline decay {bot.traits.disciplineDecay.toFixed(2)} · noise {bot.traits.noiseScale.toFixed(2)}
+                  aggression {bot.traits.aggression.toFixed(2)} · restraint {bot.traits.restraint.toFixed(2)} · star
+                  pref {bot.traits.starPreference.toFixed(2)} · discipline decay{' '}
+                  {bot.traits.disciplineDecay.toFixed(2)} · noise {bot.traits.noiseScale.toFixed(2)}
                 </div>
               </div>
             )
