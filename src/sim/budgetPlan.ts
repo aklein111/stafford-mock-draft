@@ -24,15 +24,25 @@ export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
   EVEN_SPREAD: 'Spreads it evenly',
 }
 
-// Higher decay = steeper drop-off from the plan's biggest slot to its
+// Lower decay = steeper drop-off from the plan's biggest slot to its
 // smallest (stars-and-scrubs); close to 1 = nearly flat (spreads evenly).
 // BALANCED is the default for most of the room, per REVISIONS.md: "one
 // stars-and-scrubs plan, a couple balanced, one that spreads evenly."
-// These are starting points for the step 4 calibration harness to tune,
-// not final numbers.
+//
+// BALANCED's value was re-tuned in step 5: the original 0.78 gave its top
+// slot only ~$45 of $200. Since the winning price on an elite player is
+// roughly the *second*-highest capped bid in the room, and only one bot
+// (STARS_AND_SCRUBS) had real room above ~$45, elite players were clearing
+// reliably below their true value — measured directly, e.g. the pool's
+// single best player landing below `blended` in 97%+ of simulations
+// (checkVariance.ts). Steepening BALANCED gives the other ten bots a
+// real top slot too (~$69 at 0.65), so there's genuine competitive depth
+// near the top instead of just one bot with room to spend. Re-tuned
+// against both calibrate.ts (so this doesn't re-break the step 4 shape
+// targets) and checkVariance.ts (so elite players stop being one-sided).
 const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
   STARS_AND_SCRUBS: 0.55,
-  BALANCED: 0.78,
+  BALANCED: 0.65,
   EVEN_SPREAD: 0.97,
 }
 

@@ -4,7 +4,7 @@
 
 import type { DraftState } from './draftState'
 import type { Player, Position } from './types'
-import { canBidOnPosition, openSlots, pickSlotFor, type Team } from './roster'
+import { openSlots, pickSlotFor, type Team } from './roster'
 import type { RNG } from './rng'
 import { randNormal } from './rng'
 import type { BotTraits } from './botTraits'
@@ -135,20 +135,38 @@ export function needFactor(
   return factor
 }
 
+// How much a single team's presence in the room actually contributes to
+// competitive pressure on `pos`, right now — used by roomDemandFactor. A
+// flat eligible/not-eligible split (canBidOnPosition) doesn't work for
+// RB/WR/TE: they share FLEX and BENCH so broadly that almost every team
+// stays technically "eligible" until very late in the draft, so that
+// signal barely moves across most of the draft (measured: RB/WR/TE showed
+// near-zero correlation between eligible-team-count and price/blended).
+// Weighting by *which* slot a team would actually use — a dedicated
+// starter slot means real, specific demand; FLEX is weaker, general
+// demand; BENCH is weaker still — gives a signal that actually declines
+// through the draft as dedicated slots fill, the way real scarcity does.
+function teamDemandWeight(team: Team, pos: Position): number {
+  const slot = pickSlotFor(team, pos)
+  if (!slot) return 0
+  if (slot.type === pos) return 1
+  if (slot.type === 'FLEX') return 0.5
+  return 0.25 // BENCH
+}
+
 // REVISIONS.md Change 3, step 5 — room-wide scarcity. needFactor only
 // captures how much *this* team wants the position; it says nothing about
 // how many other teams are still realistically in the market for it,
 // which is what actually produces a late-draft bargain in a real auction.
-// Scales every bid down as the fraction of still-eligible teams drops,
+// Scales every bid down as the room's average demand weight drops,
 // regardless of the bidding team's own need — even a team with a
 // dedicated open slot should pay less when there's little real
 // competition for it.
 export function roomDemandFactor(state: DraftState, pos: Position): number {
   const total = state.teams.length
   if (total === 0) return 1
-  const eligible = state.teams.filter((t) => canBidOnPosition(t, pos)).length
-  const fraction = eligible / total
-  return lerp(ROOM_DEMAND_MIN_FACTOR, 1, fraction)
+  const avgWeight = state.teams.reduce((sum, t) => sum + teamDemandWeight(t, pos), 0) / total
+  return lerp(ROOM_DEMAND_MIN_FACTOR, 1, avgWeight)
 }
 
 export function isPoorPerSlot(team: Team): boolean {
