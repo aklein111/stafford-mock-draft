@@ -28,10 +28,12 @@ export interface Team {
 const FLEX_ELIGIBLE: FlexEligiblePosition[] = ['RB', 'WR', 'TE']
 
 // Builds the fixed 14-slot roster shape from meta.starters / meta.bench.
-// Bench slots only accept flex-eligible positions: the spec is explicit that
-// a team with a filled position group can't bid on it "except where the
-// player is flex-eligible and a flex or bench slot remains" — so there is no
-// backup QB or DEF slot.
+// Bench slots mostly accept flex-eligible positions only, matching the
+// spec's "no 3rd QB, no 2nd DEF" (§3.1): DEF caps out at 1 (starter only,
+// never bench). QB caps out at 2 — one bench slot also accepts a backup
+// QB, since "no *3rd*" QB implies a 2nd is allowed, and the league's real
+// historical data (avgRosteredByPos) only makes sense with a bench QB in
+// play. The other bench slots stay flex-eligible only.
 export function createRosterSlots(starters: string[], bench: number): RosterSlot[] {
   const slots: RosterSlot[] = starters.map((s) =>
     s === 'FLEX'
@@ -39,7 +41,8 @@ export function createRosterSlots(starters: string[], bench: number): RosterSlot
       : { type: s as Position, eligible: [s as Position], filled: null },
   )
   for (let i = 0; i < bench; i++) {
-    slots.push({ type: 'BENCH', eligible: FLEX_ELIGIBLE, filled: null })
+    const eligible: Position[] = i === 0 && bench > 0 ? ['QB', ...FLEX_ELIGIBLE] : [...FLEX_ELIGIBLE]
+    slots.push({ type: 'BENCH', eligible, filled: null })
   }
   return slots
 }

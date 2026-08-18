@@ -34,15 +34,19 @@ describe('roster rules', () => {
     expect(legalMaxBid(team)).toBe(200 - (14 - 1)) // must leave $1 for every other open slot
   })
 
-  it('bench slots reject QB and DEF (no backup QB, no 2nd DEF)', () => {
-    const team = createTeam(1, 'A', 200, draftData.meta.starters, draftData.meta.bench)
-    // Fill the single QB slot.
-    assignPlayer(team, makePlayer({ name: 'QB1', pos: 'QB' }), 10, 1)
-    expect(canBidOnPosition(team, 'QB')).toBe(false)
-
+  it('DEF has no bench slot: 2nd DEF is never draftable', () => {
     const defTeam = createTeam(2, 'B', 200, draftData.meta.starters, draftData.meta.bench)
     assignPlayer(defTeam, makePlayer({ name: 'DEF1', pos: 'DEF' }), 5, 1)
     expect(canBidOnPosition(defTeam, 'DEF')).toBe(false)
+  })
+
+  it('QB gets exactly one bench slot: a 2nd QB is draftable, a 3rd is not', () => {
+    const team = createTeam(1, 'A', 200, draftData.meta.starters, draftData.meta.bench)
+    assignPlayer(team, makePlayer({ name: 'QB1', pos: 'QB' }), 10, 1) // fills the starter slot
+    expect(canBidOnPosition(team, 'QB')).toBe(true) // one bench slot still takes a QB
+
+    assignPlayer(team, makePlayer({ name: 'QB2', pos: 'QB' }), 5, 2) // fills the one QB-eligible bench slot
+    expect(canBidOnPosition(team, 'QB')).toBe(false) // no 3rd QB
   })
 
   it('RB/WR/TE can still fill FLEX and BENCH after starter slots are full', () => {
