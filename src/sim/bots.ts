@@ -73,7 +73,7 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const bot = byTeamId.get(team.id)
     if (!bot) return 0
 
-    const anchor = bot.valuations.get(playerKey(player)) ?? player.expected
+    const anchor = bot.valuations.get(playerKey(player)) ?? player.blended
     const timing = timingFactor(state, player.pos)
     const need = needFactor(team, player, bot.traits.disciplineDecay, backupQbFactor)
     const inflation = inflationFactor(computeInflation(state))

@@ -3,7 +3,15 @@ import { computeInflation, inflationFactor } from '../sim/valuation'
 
 const SPEEDS: Speed[] = ['instant', '1x', '4x']
 
-export function TopBar({ controller }: { controller: DraftController }) {
+export function TopBar({
+  controller,
+  revealPrices,
+  onToggleRevealPrices,
+}: {
+  controller: DraftController
+  revealPrices: boolean
+  onToggleRevealPrices: () => void
+}) {
   const { state, speed, setSpeed, canUndo, undoLastPick, restart, seed } = controller
   const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
   const progress = totalSlots > 0 ? Math.min(1, state.pickNumber / totalSlots) : 0
@@ -61,6 +69,13 @@ export function TopBar({ controller }: { controller: DraftController }) {
         </button>
         <button className="secondary" onClick={() => restart()} title={`Restart from seed ${seed}`}>
           Restart (same seed)
+        </button>
+        <button
+          className={`pos-filter-btn ${revealPrices ? 'active' : ''}`}
+          onClick={onToggleRevealPrices}
+          title="Show the market's blended price estimate while bidding (off by default — the point is to practice reading the room)"
+        >
+          {revealPrices ? 'Hide prices' : 'Reveal prices'}
         </button>
       </div>
     </div>

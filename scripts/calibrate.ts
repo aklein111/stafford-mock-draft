@@ -70,7 +70,7 @@ function main() {
     `Running ${args.drafts} headless bots-only drafts (NOISE_K=${args.noiseK}, CENTERING=${args.centering}, BACKUP_QB_NEED_FACTOR=${args.backupQbFactor})...\n`,
   )
 
-  const bucketSums = BUCKETS.map(() => ({ n: 0, sumExpected: 0, sumPrice: 0 }))
+  const bucketSums = BUCKETS.map(() => ({ n: 0, sumBlended: 0, sumPrice: 0 }))
   let totalTeamSpend = 0
   let totalTeamCount = 0
   let fullRosterTeams = 0
@@ -112,11 +112,11 @@ function main() {
       if (pick.price <= 2) dollarSpotCount += 1
       posCounts[pick.player.pos] += 1
 
-      const bucket = BUCKETS.find((b) => pick.player.expected >= b.lo && pick.player.expected <= b.hi)
+      const bucket = BUCKETS.find((b) => pick.player.blended >= b.lo && pick.player.blended <= b.hi)
       if (bucket) {
         const idx = BUCKETS.indexOf(bucket)
         bucketSums[idx].n += 1
-        bucketSums[idx].sumExpected += pick.player.expected
+        bucketSums[idx].sumBlended += pick.player.blended
         bucketSums[idx].sumPrice += pick.price
       }
     }
@@ -126,12 +126,12 @@ function main() {
   console.log(pad('bucket', 8) + pad('n', 7) + pad('meanExpected', 14) + pad('meanPrice', 12) + pad('ratio', 8) + '  within5%')
   let worstDelta = 0
   for (let i = 0; i < BUCKETS.length; i++) {
-    const { n, sumExpected, sumPrice } = bucketSums[i]
+    const { n, sumBlended, sumPrice } = bucketSums[i]
     if (n === 0) {
       console.log(`${pad(BUCKETS[i].label, 8)}  no picks in this bucket`)
       continue
     }
-    const meanExpected = sumExpected / n
+    const meanExpected = sumBlended / n
     const meanPrice = sumPrice / n
     const ratio = meanPrice / meanExpected
     const delta = Math.abs(ratio - 1)

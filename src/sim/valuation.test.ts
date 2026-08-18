@@ -22,14 +22,12 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
     name: 'Test Player',
     team: 'XXX',
     pos: 'RB',
-    myRank: 1,
-    myValue: 10,
-    yahooAAV: 10,
-    consensusRank: 1,
-    consensusPosRank: 1,
-    leaguePosTarget: 10,
-    expected: 40,
-    edge: 0,
+    marketRank: 1,
+    posRank: 1,
+    yahooAAV: 40,
+    leagueOverall: 40,
+    leaguePositional: 40,
+    blended: 40,
     tier: 1,
     sd: 5,
     matchedYahoo: true,
@@ -70,7 +68,6 @@ function makeMiniData(): DraftData {
     },
     calibration: {
       baselineInflation: 1,
-      note: '',
       moneyClock: [],
       timingMultiplier: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
       positionTiming: {
@@ -81,7 +78,12 @@ function makeMiniData(): DraftData {
       } as DraftData['calibration']['positionTiming'],
       avgRosteredByPos: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 } as DraftData['calibration']['avgRosteredByPos'],
       dollarSpotsPerTeam: 0,
-      positionScheme: {} as DraftData['calibration']['positionScheme'],
+      targets: {
+        priceBands: [],
+        nthMostExpensive: {},
+        topNShareOfPool: {},
+        note: '',
+      },
     },
     priceCurve: [4, 1, 1, 1],
     positionalValues: [],
@@ -93,8 +95,8 @@ describe('buildBotValuations (spec §3.2)', () => {
   // These formula-shape tests pass noiseK=1, centering=0 explicitly so
   // they stay decoupled from constants.ts's tuned production CENTERING
   // (see constants.ts and scripts/calibrate.ts for how that was chosen).
-  it('with neutral traits, zero noise, and zero centering, values equal expected price', () => {
-    const players = [makePlayer({ name: 'A', expected: 40 }), makePlayer({ name: 'B', expected: 10 })]
+  it('with neutral traits, zero noise, and zero centering, values equal the blended price', () => {
+    const players = [makePlayer({ name: 'A', blended: 40 }), makePlayer({ name: 'B', blended: 10 })]
     const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(40)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(10)
@@ -102,28 +104,28 @@ describe('buildBotValuations (spec §3.2)', () => {
 
   it('positionBias scales the valuation for that position only', () => {
     const traits: BotTraits = { ...neutralTraits, positionBias: { ...neutralTraits.positionBias, RB: 1.2 } }
-    const players = [makePlayer({ name: 'A', pos: 'RB', expected: 40 }), makePlayer({ name: 'B', pos: 'WR', expected: 40 })]
+    const players = [makePlayer({ name: 'A', pos: 'RB', blended: 40 }), makePlayer({ name: 'B', pos: 'WR', blended: 40 })]
     const values = buildBotValuations(players, traits, zeroNoiseRng(), 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(48)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(40)
   })
 
   it('centering shifts every valuation by a flat dollar amount', () => {
-    const players = [makePlayer({ name: 'A', expected: 40 }), makePlayer({ name: 'B', expected: 10 })]
+    const players = [makePlayer({ name: 'A', blended: 40 }), makePlayer({ name: 'B', blended: 10 })]
     const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 3)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(43)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(13)
   })
 
   it('defaults to the tuned CENTERING constant when not explicitly overridden', () => {
-    const player = makePlayer({ expected: 40 })
+    const player = makePlayer({ blended: 40 })
     const values = buildBotValuations([player], neutralTraits, zeroNoiseRng())
     expect(values.get(playerKey(player))).toBeCloseTo(40 + CENTERING)
   })
 
   it('never returns a negative valuation', () => {
     const traits: BotTraits = { ...neutralTraits, aggression: -1 } // absurd on purpose, just to force a negative raw value
-    const values = buildBotValuations([makePlayer({ expected: 40 })], traits, zeroNoiseRng())
+    const values = buildBotValuations([makePlayer({ blended: 40 })], traits, zeroNoiseRng())
     expect([...values.values()][0]).toBeGreaterThanOrEqual(0)
   })
 })
@@ -156,11 +158,11 @@ describe('timingFactor (spec §4.1)', () => {
 })
 
 describe('computeInflation / inflationFactor (spec §4.2)', () => {
-  it('is 1 (no inflation) when remaining budget matches remaining expected value', () => {
+  it('is 1 (no inflation) when remaining budget matches remaining blended value', () => {
     const data = makeMiniData()
     const state = createInitialState(data, 1)
-    state.undrafted = [makePlayer({ expected: 20 }), makePlayer({ name: 'B', expected: 20 })]
-    // 2 teams x $20 = $40 remaining budget; undrafted expected sums to $40.
+    state.undrafted = [makePlayer({ blended: 20 }), makePlayer({ name: 'B', blended: 20 })]
+    // 2 teams x $20 = $40 remaining budget; undrafted blended sums to $40.
     expect(computeInflation(state)).toBeCloseTo(1)
     expect(inflationFactor(computeInflation(state))).toBeCloseTo(1)
   })
@@ -168,8 +170,8 @@ describe('computeInflation / inflationFactor (spec §4.2)', () => {
   it('rises above 1 when there is more money left than nominal value left, and the damping softens it', () => {
     const data = makeMiniData()
     const state = createInitialState(data, 1)
-    state.undrafted = [makePlayer({ expected: 10 })]
-    // $40 remaining budget vs $10 remaining expected -> inflation = 4.
+    state.undrafted = [makePlayer({ blended: 10 })]
+    // $40 remaining budget vs $10 remaining blended -> inflation = 4.
     const inflation = computeInflation(state)
     expect(inflation).toBeCloseTo(4)
     // Damping factor is 1 + 0.6*(4-1) = 2.8, well short of a full 4x reaction.

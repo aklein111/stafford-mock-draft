@@ -43,9 +43,9 @@ export function buildBotValuations(
 ): Map<string, number> {
   const values = new Map<string, number>()
   for (const player of players) {
-    const base = player.expected + centering
+    const base = player.blended + centering
     const posMult = traits.positionBias[player.pos]
-    const starMult = 1 + traits.starPreference * (player.expected / 70)
+    const starMult = 1 + traits.starPreference * (player.blended / 70)
     const noiseWidth =
       player.sd * traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
     const noise = randNormal(rng, 0, noiseWidth)
@@ -83,9 +83,9 @@ export function timingFactor(state: DraftState, pos: Position): number {
 // what the remaining players are nominally worth.
 export function computeInflation(state: DraftState): number {
   const remainingBudget = state.teams.reduce((sum, t) => sum + (t.budget - t.spent), 0)
-  const remainingExpected = state.undrafted.reduce((sum, p) => sum + p.expected, 0)
-  if (remainingExpected <= 0) return 1
-  return remainingBudget / remainingExpected
+  const remainingBlended = state.undrafted.reduce((sum, p) => sum + p.blended, 0)
+  if (remainingBlended <= 0) return 1
+  return remainingBudget / remainingBlended
 }
 
 // Damped so bots react to inflation without perfectly correcting for it.

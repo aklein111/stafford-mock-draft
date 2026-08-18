@@ -26,14 +26,14 @@ export function nextNominator(state: DraftState): Team | null {
 }
 
 // Placeholder nomination strategy for phases 1-2: always put up the
-// highest-`expected` undrafted player. Real bot nomination strategy (§3.7,
+// highest-`blended` undrafted player. Real bot nomination strategy (§3.7,
 // below) replaces this for real drafts — this version exists only to
 // exercise the engine end to end without needing bot state.
 export function defaultNominationStrategy(state: DraftState): Player | null {
   if (state.undrafted.length === 0) return null
   let best = state.undrafted[0]
   for (const p of state.undrafted) {
-    if (p.expected > best.expected) best = p
+    if (p.blended > best.blended) best = p
   }
   return best
 }
@@ -67,7 +67,7 @@ function weightedPick(candidates: Player[], weight: (p: Player) => number, rng: 
 // budget-drain and value-grab both skew toward expensive players early
 // (there's more of them left, and they're the ones worth draining money
 // on or grabbing), the mix naturally skews early nominations toward
-// high-`expected` players without needing to force it separately.
+// high-`blended` players without needing to force it separately.
 export function createBotNominationStrategy(botStates: BotState[]): NominationStrategy {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
 
@@ -85,7 +85,7 @@ export function createBotNominationStrategy(botStates: BotState[]): NominationSt
     if (roll < budgetDrain) {
       const cantUse = pool.filter((p) => !canBidOnPosition(nominator, p.pos))
       const candidates = cantUse.length > 0 ? cantUse : pool
-      return weightedPick(candidates, (p) => p.expected, rng)
+      return weightedPick(candidates, (p) => p.blended, rng)
     }
 
     // Value grab: put up someone we actually want, but only when we're
@@ -94,9 +94,9 @@ export function createBotNominationStrategy(botStates: BotState[]): NominationSt
       if (bot && dollarsPerSlot(nominator) > averageDollarsPerSlot(state.teams)) {
         const wanted = pool.filter((p) => canBidOnPosition(nominator, p.pos))
         const candidates = wanted.length > 0 ? wanted : pool
-        return weightedPick(candidates, (p) => bot.valuations.get(playerKey(p)) ?? p.expected, rng)
+        return weightedPick(candidates, (p) => bot.valuations.get(playerKey(p)) ?? p.blended, rng)
       }
-      return weightedPick(pool, (p) => p.expected, rng)
+      return weightedPick(pool, (p) => p.blended, rng)
     }
 
     // Need fill: nominate to plug one of our own open starting slots.
@@ -106,7 +106,7 @@ export function createBotNominationStrategy(botStates: BotState[]): NominationSt
       )
       const holes = pool.filter((p) => openStarterPositions.has(p.pos))
       const candidates = holes.length > 0 ? holes : pool
-      return weightedPick(candidates, (p) => 1 / (1 + p.expected), rng) // prefer something affordable
+      return weightedPick(candidates, (p) => 1 / (1 + p.blended), rng) // prefer something affordable
     }
 
     // Random noise.

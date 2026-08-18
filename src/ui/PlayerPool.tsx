@@ -3,7 +3,7 @@ import type { DraftState } from '../sim/draftState'
 import type { Player, Position } from '../sim/types'
 import { playerKey } from '../sim/valuation'
 
-type SortKey = 'myRank' | 'myValue' | 'expected' | 'edge' | 'tier'
+type SortKey = 'marketRank' | 'posRank' | 'tier' | 'blended'
 
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'DEF']
 
@@ -11,20 +11,24 @@ export function PlayerPool({
   state,
   canNominate,
   watchList,
+  revealPrices,
   onNominate,
   onToggleWatch,
 }: {
   state: DraftState
   canNominate: boolean
   watchList: Set<string>
+  revealPrices: boolean
   onNominate: (player: Player) => void
   onToggleWatch: (player: Player) => void
 }) {
   const [search, setSearch] = useState('')
   const [posFilter, setPosFilter] = useState<Position | 'ALL'>('ALL')
   const [watchOnly, setWatchOnly] = useState(false)
-  const [sortKey, setSortKey] = useState<SortKey>('edge')
-  const [sortDesc, setSortDesc] = useState(true)
+  // Ordered by marketRank (Yahoo's consensus) by default, per REVISIONS.md
+  // change 1 — not by anything derived from a personal opinion.
+  const [sortKey, setSortKey] = useState<SortKey>('marketRank')
+  const [sortDesc, setSortDesc] = useState(false)
 
   const draftedByKey = useMemo(() => {
     const m = new Map<string, { price: number; teamName: string }>()
@@ -50,7 +54,7 @@ export function PlayerPool({
     if (key === sortKey) setSortDesc((d) => !d)
     else {
       setSortKey(key)
-      setSortDesc(true)
+      setSortDesc(false)
     }
   }
 
@@ -83,11 +87,10 @@ export function PlayerPool({
             <th>Name</th>
             <th>Team</th>
             <th>Pos</th>
-            <th onClick={() => toggleSort('myRank')}>My Rank</th>
-            <th onClick={() => toggleSort('myValue')}>My Value</th>
-            <th onClick={() => toggleSort('expected')}>Expected</th>
-            <th onClick={() => toggleSort('edge')}>Edge</th>
+            <th onClick={() => toggleSort('marketRank')}>Market Rank</th>
+            <th onClick={() => toggleSort('posRank')}>Pos Rank</th>
             <th onClick={() => toggleSort('tier')}>Tier</th>
+            {revealPrices && <th onClick={() => toggleSort('blended')}>Blended</th>}
             <th>Status</th>
           </tr>
         </thead>
@@ -110,14 +113,10 @@ export function PlayerPool({
                 <td>{p.name}</td>
                 <td>{p.team}</td>
                 <td>{p.pos}</td>
-                <td>{p.myRank}</td>
-                <td>${p.myValue}</td>
-                <td>${p.expected}</td>
-                <td>
-                  {p.edge > 0 ? '+' : ''}
-                  {p.edge}
-                </td>
+                <td>{p.marketRank}</td>
+                <td>{p.posRank}</td>
                 <td>{p.tier}</td>
+                {revealPrices && <td>${p.blended}</td>}
                 <td>
                   {drafted ? (
                     `$${drafted.price} — ${drafted.teamName}`
