@@ -1,7 +1,10 @@
-import type { DraftState } from '../sim/draftState'
+import type { DraftController, Speed } from './useDraftController'
 import { computeInflation, inflationFactor } from '../sim/valuation'
 
-export function TopBar({ state }: { state: DraftState }) {
+const SPEEDS: Speed[] = ['instant', '1x', '4x']
+
+export function TopBar({ controller }: { controller: DraftController }) {
+  const { state, speed, setSpeed, canUndo, undoLastPick, restart, seed } = controller
   const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
   const progress = totalSlots > 0 ? Math.min(1, state.pickNumber / totalSlots) : 0
   const decile = Math.min(10, Math.floor(progress * 10))
@@ -37,6 +40,28 @@ export function TopBar({ state }: { state: DraftState }) {
       <div className="stat">
         <span className="stat-label">Players drafted</span>
         <span className="stat-value">{state.drafted.length}</span>
+      </div>
+
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <span className="stat-label" style={{ marginRight: '0.25rem' }}>
+          Speed
+        </span>
+        {SPEEDS.map((s) => (
+          <button
+            key={s}
+            className={`pos-filter-btn ${speed === s ? 'active' : ''}`}
+            onClick={() => setSpeed(s)}
+            title={s === 'instant' ? 'Jump straight to the next decision' : `Watch bot picks happen at ${s}`}
+          >
+            {s}
+          </button>
+        ))}
+        <button className="secondary" onClick={undoLastPick} disabled={!canUndo} title="Undo the most recent pick">
+          Undo last pick
+        </button>
+        <button className="secondary" onClick={() => restart()} title={`Restart from seed ${seed}`}>
+          Restart (same seed)
+        </button>
       </div>
     </div>
   )

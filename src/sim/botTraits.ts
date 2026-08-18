@@ -63,13 +63,40 @@ export function assignArchetypes(count: number, rng: RNG): Archetype[] {
   return archetypes
 }
 
-export function generateBotTraits(count: number, rng: RNG): BotTraits[] {
-  const archetypes = assignArchetypes(count, rng)
-  return archetypes.map((archetype) => ({
+function traitsForArchetype(archetype: Archetype, rng: RNG): BotTraits {
+  return {
     aggression: randRange(rng, 0.9, 1.1),
     positionBias: positionBiasFor(archetype, rng),
     starPreference: randRange(rng, -0.1, 0.1),
     disciplineDecay: randRange(rng, 0.5, 1.5),
     noiseScale: randRange(rng, 0.7, 1.3),
-  }))
+  }
+}
+
+export function generateBotTraits(count: number, rng: RNG): BotTraits[] {
+  const archetypes = assignArchetypes(count, rng)
+  return archetypes.map((archetype) => traitsForArchetype(archetype, rng))
+}
+
+export interface BotPersonality {
+  archetype: Archetype
+  traits: BotTraits
+}
+
+// Same generation as generateBotTraits, but keeps the archetype label
+// alongside each bot's traits — the spec's post-draft reveal (§5) wants
+// to show what kind of drafter each bot actually was, not just raw
+// numbers. Kept hidden from the UI until the draft ends, same as the
+// traits themselves.
+export function generateBotPersonalities(count: number, rng: RNG): BotPersonality[] {
+  const archetypes = assignArchetypes(count, rng)
+  return archetypes.map((archetype) => ({ archetype, traits: traitsForArchetype(archetype, rng) }))
+}
+
+export const ARCHETYPE_LABELS: Record<Archetype, string> = {
+  RB_HEAVY: 'RB-heavy',
+  WR_HEAVY: 'WR-heavy',
+  EARLY_QB: 'Takes a QB early',
+  PUNT_TE: 'Punts TE',
+  NEUTRAL: 'Neutral',
 }

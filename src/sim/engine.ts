@@ -88,22 +88,31 @@ function removeFromUndrafted(state: DraftState, player: Player) {
   state.undrafted = state.undrafted.filter((p) => !(p.name === player.name && p.team === player.team))
 }
 
-// Advances pickNumber, removes the player from the pool, and — if someone
-// won — assigns them and records the pick. Shared by runDraftStep and by
-// the UI's interactive draft controller (useDraftController.ts), so a
+// If someone won, advances pickNumber, removes the player from the pool,
+// assigns them, and records the pick. Shared by runDraftStep and by the
+// UI's interactive draft controller (useDraftController.ts), so a
 // human-inclusive auction resolved via humanAuction.ts's finalizeAuction()
 // gets applied identically to a bot-only one.
+//
+// A player nobody bid on stays in the pool rather than being discarded.
+// Spec §1 says the draft only ends "when all 12 teams have 14 players" —
+// permanently removing an unwanted player can shrink the pool below what's
+// needed to actually reach that, which is exactly what happened in testing
+// once a human seat could pass on an auction (see git history): a chain of
+// discarded players stalled the draft with rosters still short. pickNumber
+// only advances on an actual fill, since it's meant to track roster
+// progress, not nomination attempts.
 export function applyAuctionResult(state: DraftState, player: Player, result: AuctionResult | null): void {
+  if (!result?.winner) {
+    state.log.push(`${player.name} (${player.pos}) found no bidders this time and stays in the pool`)
+    return
+  }
+
   state.pickNumber += 1
   removeFromUndrafted(state, player)
-
-  if (result?.winner) {
-    assignPlayer(result.winner, player, result.price, state.pickNumber)
-    state.drafted.push({ player, price: result.price, pickNumber: state.pickNumber })
-    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) to ${result.winner.name} for $${result.price}`)
-  } else {
-    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) found no bidders and was discarded`)
-  }
+  assignPlayer(result.winner, player, result.price, state.pickNumber)
+  state.drafted.push({ player, price: result.price, pickNumber: state.pickNumber })
+  state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) to ${result.winner.name} for $${result.price}`)
 }
 
 // Runs one nominate -> auction -> assign cycle. Returns false if the draft

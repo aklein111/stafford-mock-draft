@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { DraftState } from '../sim/draftState'
 import type { Player, Position } from '../sim/types'
+import { playerKey } from '../sim/valuation'
 
 type SortKey = 'myRank' | 'myValue' | 'expected' | 'edge' | 'tier'
 
@@ -9,21 +10,26 @@ const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'DEF']
 export function PlayerPool({
   state,
   canNominate,
+  watchList,
   onNominate,
+  onToggleWatch,
 }: {
   state: DraftState
   canNominate: boolean
+  watchList: Set<string>
   onNominate: (player: Player) => void
+  onToggleWatch: (player: Player) => void
 }) {
   const [search, setSearch] = useState('')
   const [posFilter, setPosFilter] = useState<Position | 'ALL'>('ALL')
+  const [watchOnly, setWatchOnly] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>('edge')
   const [sortDesc, setSortDesc] = useState(true)
 
   const draftedByKey = useMemo(() => {
     const m = new Map<string, { price: number; teamName: string }>()
     for (const d of state.drafted) {
-      m.set(`${d.player.name}|${d.player.team}`, { price: d.price, teamName: findTeamName(state, d) })
+      m.set(playerKey(d.player), { price: d.price, teamName: findTeamName(state, d) })
     }
     return m
   }, [state])
@@ -31,13 +37,14 @@ export function PlayerPool({
   const rows = useMemo(() => {
     let players = state.data.players
     if (posFilter !== 'ALL') players = players.filter((p) => p.pos === posFilter)
+    if (watchOnly) players = players.filter((p) => watchList.has(playerKey(p)))
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       players = players.filter((p) => p.name.toLowerCase().includes(q))
     }
     const sorted = [...players].sort((a, b) => (sortDesc ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]))
     return sorted
-  }, [state.data.players, posFilter, search, sortKey, sortDesc])
+  }, [state.data.players, posFilter, watchOnly, watchList, search, sortKey, sortDesc])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDesc((d) => !d)
@@ -60,11 +67,19 @@ export function PlayerPool({
             {pos}
           </button>
         ))}
+        <button
+          className={`pos-filter-btn ${watchOnly ? 'active' : ''}`}
+          onClick={() => setWatchOnly((w) => !w)}
+          title="Show only starred players"
+        >
+          ★ Watched
+        </button>
         <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{rows.length} players</span>
       </div>
       <table>
         <thead>
           <tr>
+            <th></th>
             <th>Name</th>
             <th>Team</th>
             <th>Pos</th>
@@ -78,16 +93,30 @@ export function PlayerPool({
         </thead>
         <tbody>
           {rows.map((p) => {
-            const drafted = draftedByKey.get(`${p.name}|${p.team}`)
+            const key = playerKey(p)
+            const drafted = draftedByKey.get(key)
+            const watched = watchList.has(key)
             return (
-              <tr key={`${p.name}|${p.team}`} className={drafted ? 'drafted' : ''}>
+              <tr key={key} className={drafted ? 'drafted' : ''}>
+                <td>
+                  <span
+                    onClick={() => onToggleWatch(p)}
+                    style={{ cursor: 'pointer', color: watched ? '#f59e0b' : '#4b5563' }}
+                    title={watched ? 'Remove from watch list' : 'Add to watch list'}
+                  >
+                    ★
+                  </span>
+                </td>
                 <td>{p.name}</td>
                 <td>{p.team}</td>
                 <td>{p.pos}</td>
                 <td>{p.myRank}</td>
                 <td>${p.myValue}</td>
                 <td>${p.expected}</td>
-                <td>{p.edge > 0 ? '+' : ''}{p.edge}</td>
+                <td>
+                  {p.edge > 0 ? '+' : ''}
+                  {p.edge}
+                </td>
                 <td>{p.tier}</td>
                 <td>
                   {drafted ? (

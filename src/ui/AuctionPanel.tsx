@@ -6,21 +6,6 @@ export function AuctionPanel({ controller }: { controller: DraftController }) {
     controller
   const [maxBidInput, setMaxBidInput] = useState('')
 
-  if (phase === 'complete') {
-    return (
-      <div className="panel center-panel">
-        <h2>Draft complete</h2>
-        <p>
-          Every team's roster is full. You spent ${humanTeam.spent} of ${humanTeam.budget}.
-        </p>
-        <p className="nominate-hint">
-          A full results breakdown (final rosters, spend vs. expected, bot personality reveal) is coming in a later
-          phase.
-        </p>
-      </div>
-    )
-  }
-
   if (phase === 'nominating') {
     return (
       <div className="panel center-panel">
@@ -31,19 +16,19 @@ export function AuctionPanel({ controller }: { controller: DraftController }) {
     )
   }
 
-  if (!currentAuction || !standing) {
+  // Defensive fallback — shouldn't normally happen while phase is
+  // 'auctioning', since the controller always pairs the two.
+  if (!currentAuction) {
     return (
       <div className="panel center-panel">
-        <h2>Waiting for bidders</h2>
-        <p className="nominate-hint">Nobody wants this player — it'll be discarded.</p>
         <button onClick={confirmAndAdvance}>Continue</button>
       </div>
     )
   }
 
   const { player, humanBid, humanEligible, bidLog } = currentAuction
-  const humanIsLeading = standing.winner?.id === humanTeam.id
-  const nextBid = standing.price + 1
+  const humanIsLeading = standing?.winner?.id === humanTeam.id
+  const nextBid = (standing?.price ?? 0) + 1
 
   return (
     <div className="panel center-panel">
@@ -76,7 +61,13 @@ export function AuctionPanel({ controller }: { controller: DraftController }) {
       <div className="standing">
         <div className="stat-label">Current high bid</div>
         <div className="stat-value">
-          ${standing.price} — {humanIsLeading ? 'you' : standing.winner?.name}
+          {standing ? (
+            <>
+              ${standing.price} — {humanIsLeading ? 'you' : standing.winner?.name}
+            </>
+          ) : (
+            'No bids yet'
+          )}
         </div>
       </div>
 
@@ -119,7 +110,9 @@ export function AuctionPanel({ controller }: { controller: DraftController }) {
       )}
 
       <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-        <button onClick={confirmAndAdvance}>{humanIsLeading ? 'Win at this price & continue' : 'Continue'}</button>
+        <button onClick={confirmAndAdvance}>
+          {humanIsLeading ? 'Win at this price & continue' : standing ? 'Continue' : 'Continue (stays in pool)'}
+        </button>
       </div>
     </div>
   )

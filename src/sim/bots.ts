@@ -2,7 +2,7 @@ import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
 import type { Player } from './types'
 import type { RNG } from './rng'
-import { generateBotTraits, type BotTraits } from './botTraits'
+import { generateBotPersonalities, type Archetype, type BotTraits } from './botTraits'
 import {
   buildBotValuations,
   computeInflation,
@@ -33,6 +33,7 @@ export const trivialDollarBot: MaxBidFn = (_state, team, player) => {
 
 export interface BotState {
   teamId: number
+  archetype: Archetype
   traits: BotTraits
   valuations: Map<string, number>
 }
@@ -41,6 +42,8 @@ export interface BotState {
 // plus a private valuation for every player, both drawn once at draft
 // start and kept for the whole draft. noiseK/centering pass straight
 // through to buildBotValuations — see there for what overriding them does.
+// The archetype label is kept alongside for the post-draft personality
+// reveal (spec §5) — never surfaced in the UI before the draft ends.
 export function createBotStates(
   teamIds: number[],
   players: Player[],
@@ -48,11 +51,12 @@ export function createBotStates(
   noiseK?: number,
   centering?: number,
 ): BotState[] {
-  const traits = generateBotTraits(teamIds.length, rng)
+  const personalities = generateBotPersonalities(teamIds.length, rng)
   return teamIds.map((teamId, i) => ({
     teamId,
-    traits: traits[i],
-    valuations: buildBotValuations(players, traits[i], rng, noiseK, centering),
+    archetype: personalities[i].archetype,
+    traits: personalities[i].traits,
+    valuations: buildBotValuations(players, personalities[i].traits, rng, noiseK, centering),
   }))
 }
 

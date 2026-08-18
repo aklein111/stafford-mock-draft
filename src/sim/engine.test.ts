@@ -152,7 +152,10 @@ describe('full draft with trivial $1 bots', () => {
       expect(team.spent).toBeLessThanOrEqual(team.budget)
       expect(legalMaxBid(team)).toBeGreaterThanOrEqual(0)
     }
-    expect(state.log.length).toBe(state.pickNumber)
+    // pickNumber only advances on an actual fill; the log also gets a line
+    // for "no bidders" attempts, so it can run ahead of pickNumber.
+    expect(state.log.length).toBeGreaterThanOrEqual(state.pickNumber)
+    expect(state.drafted.length).toBe(state.pickNumber)
   })
 
   it('never assigns the same player twice', () => {

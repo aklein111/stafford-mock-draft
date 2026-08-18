@@ -64,6 +64,7 @@ describe('bot nomination strategy (spec §3.7)', () => {
 
     const botState: BotState = {
       teamId: 1,
+      archetype: 'NEUTRAL',
       traits: { aggression: 1, positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 }, starPreference: 0, disciplineDecay: 1, noiseScale: 1 },
       valuations: new Map([[playerKey(wanted), 30], [playerKey(unwanted), 60]]),
     }
