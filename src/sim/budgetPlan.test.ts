@@ -44,43 +44,50 @@ describe('assignBudgetPlanArchetypes (REVISIONS.md Fix 2a)', () => {
 describe('generateBudgetPlan (REVISIONS.md Fix 2a)', () => {
   it('always sums to exactly the total budget, with every slot at least $1', () => {
     for (const archetype of ['STARS_AND_SCRUBS', 'BALANCED', 'EVEN_SPREAD'] as const) {
-      const plan = generateBudgetPlan(archetype, 200, 9, 5, mulberry32(3))
+      const plan = generateBudgetPlan(archetype, 200, 9, 5)
       expect(plan).toHaveLength(14)
       expect(plan.reduce((a, b) => a + b, 0)).toBe(200)
       for (const share of plan) expect(share).toBeGreaterThanOrEqual(1)
     }
   })
 
+  it('is sorted biggest-first, not tied to any slot or position', () => {
+    const plan = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5)
+    for (let i = 1; i < plan.length; i++) {
+      expect(plan[i]).toBeLessThanOrEqual(plan[i - 1])
+    }
+  })
+
   it('stars-and-scrubs concentrates far more than even-spread', () => {
-    const stars = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(1))
-    const even = generateBudgetPlan('EVEN_SPREAD', 200, 9, 5, mulberry32(1))
+    const stars = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5)
+    const even = generateBudgetPlan('EVEN_SPREAD', 200, 9, 5)
     const spread = (plan: number[]) => Math.max(...plan) - Math.min(...plan)
     expect(spread(stars)).toBeGreaterThan(spread(even))
     // Even-spread should land close to a flat 200/14 ~ 14.3 per slot.
     for (const share of even) expect(share).toBeGreaterThan(10)
   })
 
-  it('starter slots collectively get more than bench slots for a concentrated plan', () => {
-    const plan = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(2))
-    const starterTotal = plan.slice(0, 9).reduce((a, b) => a + b, 0)
-    const benchTotal = plan.slice(9).reduce((a, b) => a + b, 0)
-    expect(starterTotal).toBeGreaterThan(benchTotal)
+  it('is deterministic — no randomness involved', () => {
+    const a = generateBudgetPlan('BALANCED', 200, 9, 5)
+    const b = generateBudgetPlan('BALANCED', 200, 9, 5)
+    expect(a).toEqual(b)
   })
 })
 
 describe('computePlannedMaxBid (REVISIONS.md Fix 2a)', () => {
   it('caps the bid at budget minus spend minus the plan for every other open slot', () => {
-    const team = createTeam(1, 'A', 200, ['RB', 'WR'], 0) // 2 slots
-    const plan = [120, 80] // reserve $80 for the WR slot when bidding on the RB slot
+    const team = createTeam(1, 'A', 200, ['RB', 'WR'], 0) // 2 slots, both open
+    const plan = [120, 80] // sorted biggest-first
     const maxBid = computePlannedMaxBid(team, makePlayer({ pos: 'RB' }), plan)
-    expect(maxBid).toBe(200 - 0 - 80) // = 120, exactly the RB slot's own planned share
+    expect(maxBid).toBe(200 - 0 - 80) // = 120: the current bid gets the biggest unconsumed value
   })
 
-  it('drops a slot from the reserve once it fills, freeing up room for what is left', () => {
+  it('drops the biggest remaining plan value from reserve once any slot fills', () => {
     const team = createTeam(1, 'A', 200, ['RB', 'WR', 'TE'], 0)
     const plan = [100, 60, 40]
-    assignPlayer(team, makePlayer({ name: 'RB1', pos: 'RB' }), 100, 1) // spent exactly to plan
-    // Only WR/TE remain open; bidding on WR should reserve TE's $40.
+    assignPlayer(team, makePlayer({ name: 'RB1', pos: 'RB' }), 100, 1) // one slot filled, any position
+    // Two slots remain open; the plan's *next*-biggest values ($60, $40)
+    // are what's left, regardless of which position the first fill was.
     const maxBid = computePlannedMaxBid(team, makePlayer({ pos: 'WR' }), plan)
     expect(maxBid).toBe(200 - 100 - 40) // = 60
   })
@@ -91,9 +98,31 @@ describe('computePlannedMaxBid (REVISIONS.md Fix 2a)', () => {
     assignPlayer(team, makePlayer({ name: 'RB1', pos: 'RB' }), 150, 1) // way over the $100 plan
     const maxBid = computePlannedMaxBid(team, makePlayer({ pos: 'WR' }), plan)
     // Only $50 left total, $40 of it reserved for TE -> $10 left for WR,
-    // well under the WR slot's own $60 plan.
+    // well under the plan's second-biggest value.
     expect(maxBid).toBe(200 - 150 - 40)
     expect(maxBid).toBeLessThan(plan[1])
+  })
+
+  it('the reserve depends on how many slots have filled, not which position filled them (the Fix 2a bug this fixes)', () => {
+    // Same plan, same team shape, but a different position fills first in
+    // each case. An earlier version pinned the plan to team.slots by
+    // index, so a stars-and-scrubs bot's big splurge value could only
+    // ever apply to whichever position happened to get it at plan
+    // creation — here, the cap on the remaining WR slot should be
+    // identical either way, since one slot filling (for $1, no splurge)
+    // is all that matters, not which one.
+    const plan = [150, 30, 20]
+
+    const rbFilledFirst = createTeam(1, 'A', 200, ['RB', 'WR', 'TE'], 0)
+    assignPlayer(rbFilledFirst, makePlayer({ name: 'RB1', pos: 'RB' }), 1, 1)
+    const wrCapAfterRB = computePlannedMaxBid(rbFilledFirst, makePlayer({ pos: 'WR' }), plan)
+
+    const teFilledFirst = createTeam(1, 'A', 200, ['RB', 'WR', 'TE'], 0)
+    assignPlayer(teFilledFirst, makePlayer({ name: 'TE1', pos: 'TE' }), 1, 1)
+    const wrCapAfterTE = computePlannedMaxBid(teFilledFirst, makePlayer({ pos: 'WR' }), plan)
+
+    expect(wrCapAfterRB).toBe(wrCapAfterTE)
+    expect(wrCapAfterRB).toBe(200 - 1 - 20) // one slot consumed -> $30 available, $20 reserved for TE/RB
   })
 
   it('returns 0 when the team has no eligible slot for the position', () => {

@@ -53,17 +53,12 @@ export function assignBudgetPlanArchetypes(count: number, rng: RNG): BudgetPlanA
   return archetypes
 }
 
-function shuffle<T>(arr: T[], rng: RNG): T[] {
-  const copy = [...arr]
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
-}
-
 // A geometric decay curve, biggest entry first, scaled to sum exactly to
-// `total` with every entry at least MIN_PLAN_PER_SLOT.
+// `total` with every entry at least MIN_PLAN_PER_SLOT. Always returned
+// sorted descending — the rounding-remainder adjustment below nudges
+// whichever entry is currently the biggest, which keeps it sorted in
+// practice, but the explicit sort makes that an invariant rather than an
+// accident, since computePlannedMaxBid depends on it.
 function decayCurve(count: number, decay: number, total: number): number[] {
   const weights: number[] = []
   let w = 1
@@ -78,46 +73,51 @@ function decayCurve(count: number, decay: number, total: number): number[] {
     const maxIdx = rounded.indexOf(Math.max(...rounded))
     rounded[maxIdx] += diff
   }
-  return rounded
+  return rounded.sort((a, b) => b - a)
 }
 
-// Builds a plan indexed the same way team.slots is: starter slots first
-// (createRosterSlots always builds starters, then bench, in that order),
-// then bench. The biggest dollar targets go to starter slots and the
-// smallest to bench — money is planned for the lineup, not the bench —
-// but *which* starter slot gets the biggest share is shuffled per bot, so
-// two stars-and-scrubs bots in the same room don't always plan to blow
-// their budget on the exact same position.
+// Builds a plan of dollar targets, one per roster spot, sorted biggest
+// first — deliberately *not* tied to a specific slot or position. An
+// earlier version assigned the curve to team.slots by index (with the
+// starter portion shuffled so it wasn't always the same position), which
+// meant a stars-and-scrubs bot's single big "splurge" number was pinned to
+// whichever position it happened to land on at draft start — almost never
+// the position of whichever player later turned out to be the one worth
+// splurging on. See computePlannedMaxBid for how the plan is now applied
+// to whichever slot the bot actually wants to spend big on.
 export function generateBudgetPlan(
   archetype: BudgetPlanArchetype,
   totalBudget: number,
   starterCount: number,
   benchCount: number,
-  rng: RNG,
 ): number[] {
-  const decay = DECAY_BY_ARCHETYPE[archetype]
-  const curve = decayCurve(starterCount + benchCount, decay, totalBudget)
-  const starterShares = shuffle(curve.slice(0, starterCount), rng)
-  const benchShares = shuffle(curve.slice(starterCount), rng)
-  return [...starterShares, ...benchShares]
+  return decayCurve(starterCount + benchCount, DECAY_BY_ARCHETYPE[archetype], totalBudget)
 }
 
-// The reserve-based cap (Fix 2a): how much of a team's remaining budget
-// is earmarked for every *other* still-open slot, per the plan — leaving
-// this as the most a bot will bid on the player in front of it right now.
-// Slots fill in during the draft and drop out of the sum on their own
-// (openSlots() only counts what's still unfilled), so a bot that
-// overspends its plan on one slot automatically has less room for the
-// rest without needing to explicitly shrink the plan itself.
+// The reserve-based cap (Fix 2a): how much of a team's remaining budget is
+// earmarked for every *other* still-open slot, per the plan — leaving this
+// as the most a bot will bid on the player in front of it right now.
+//
+// budgetPlan is sorted biggest-first and isn't tied to any slot's
+// identity: with N slots still open, the N smallest plan values are what's
+// "left" — every fill (any slot, any position) is treated as having spent
+// the single biggest not-yet-consumed value, so which N are left depends
+// only on how many slots have filled, not which positions they were. Sized
+// off budgetPlan.length itself (not team.slots.length) so a plan is always
+// self-consistent even if it doesn't cover every one of the team's slots.
+// That's what lets a stars-and-scrubs bot's splurge money follow whichever
+// player it actually decides is worth it, instead of a position it
+// pre-committed to before the draft even started. The current bid can
+// reach for the single biggest of what remains; the rest stays reserved
+// for every other open slot. A team that overspends its plan on one slot
+// automatically has less room for the rest without needing to explicitly
+// shrink the plan itself.
 export function computePlannedMaxBid(team: Team, player: Player, budgetPlan: number[]): number {
   const slot = pickSlotFor(team, player.pos)
   if (!slot) return 0
 
-  let reserve = 0
-  for (const open of openSlots(team)) {
-    if (open === slot) continue
-    const idx = team.slots.indexOf(open)
-    reserve += budgetPlan[idx] ?? MIN_PLAN_PER_SLOT
-  }
+  const openCount = openSlots(team).length
+  const available = budgetPlan.slice(Math.max(0, budgetPlan.length - openCount))
+  const reserve = available.slice(1).reduce((a, b) => a + b, 0)
   return team.budget - team.spent - reserve
 }
