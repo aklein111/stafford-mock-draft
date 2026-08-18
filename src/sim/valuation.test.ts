@@ -4,6 +4,7 @@ import { mulberry32 } from './rng'
 import { assignPlayer, createTeam } from './roster'
 import { createInitialState } from './draftState'
 import type { DraftData, Player } from './types'
+import { CENTERING } from './constants'
 import {
   buildBotValuations,
   computeInflation,
@@ -89,9 +90,12 @@ function makeMiniData(): DraftData {
 }
 
 describe('buildBotValuations (spec §3.2)', () => {
-  it('with neutral traits and zero noise, values equal expected price', () => {
+  // These formula-shape tests pass noiseK=1, centering=0 explicitly so
+  // they stay decoupled from constants.ts's tuned production CENTERING
+  // (see constants.ts and scripts/calibrate.ts for how that was chosen).
+  it('with neutral traits, zero noise, and zero centering, values equal expected price', () => {
     const players = [makePlayer({ name: 'A', expected: 40 }), makePlayer({ name: 'B', expected: 10 })]
-    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng())
+    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(40)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(10)
   })
@@ -99,9 +103,22 @@ describe('buildBotValuations (spec §3.2)', () => {
   it('positionBias scales the valuation for that position only', () => {
     const traits: BotTraits = { ...neutralTraits, positionBias: { ...neutralTraits.positionBias, RB: 1.2 } }
     const players = [makePlayer({ name: 'A', pos: 'RB', expected: 40 }), makePlayer({ name: 'B', pos: 'WR', expected: 40 })]
-    const values = buildBotValuations(players, traits, zeroNoiseRng())
+    const values = buildBotValuations(players, traits, zeroNoiseRng(), 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(48)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(40)
+  })
+
+  it('centering shifts every valuation by a flat dollar amount', () => {
+    const players = [makePlayer({ name: 'A', expected: 40 }), makePlayer({ name: 'B', expected: 10 })]
+    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 3)
+    expect(values.get(playerKey(players[0]))).toBeCloseTo(43)
+    expect(values.get(playerKey(players[1]))).toBeCloseTo(13)
+  })
+
+  it('defaults to the tuned CENTERING constant when not explicitly overridden', () => {
+    const player = makePlayer({ expected: 40 })
+    const values = buildBotValuations([player], neutralTraits, zeroNoiseRng())
+    expect(values.get(playerKey(player))).toBeCloseTo(40 + CENTERING)
   })
 
   it('never returns a negative valuation', () => {
@@ -120,11 +137,21 @@ describe('timingFactor (spec §4.1)', () => {
     expect(timingFactor(state, 'DEF')).toBeCloseTo(1.0)
   })
 
-  it('blends the position curve with the overall curve, weighted toward the position early on', () => {
+  it('uses the position curve alone when one exists, rather than blending with the overall curve', () => {
     const data = makeMiniData()
     const state = createInitialState(data, 1)
-    state.pickNumber = 0 // progress 0 -> decile 0 (overall 1.0), RB "early" anchor 1.2
-    expect(timingFactor(state, 'RB')).toBeCloseTo((1.0 + 1.2) / 2)
+    state.pickNumber = 0 // progress 0 -> RB "early" anchor 1.2, overall decile-0 value (1.0) unused
+    expect(timingFactor(state, 'RB')).toBeCloseTo(1.2)
+  })
+
+  it('interpolates the position curve smoothly from early to mid to late', () => {
+    const data = makeMiniData()
+    const state = createInitialState(data, 1)
+    const totalSlots = data.meta.teams * data.meta.rosterSpots
+    state.pickNumber = Math.round(totalSlots * 0.5) // halfway -> RB "mid" anchor 1.0
+    expect(timingFactor(state, 'RB')).toBeCloseTo(1.0)
+    state.pickNumber = totalSlots // fully done -> RB "late" anchor 0.6
+    expect(timingFactor(state, 'RB')).toBeCloseTo(0.6)
   })
 })
 

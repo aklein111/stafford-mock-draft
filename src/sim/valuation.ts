@@ -29,14 +29,24 @@ export function playerKey(player: Player): string {
 }
 
 // §3.2 — each bot's private, persistent valuation of every player.
-export function buildBotValuations(players: Player[], traits: BotTraits, rng: RNG): Map<string, number> {
+// noiseK/centering default to the module constants but can be overridden —
+// the phase 4 calibration harness (scripts/calibrate.ts) sweeps both
+// without needing to edit source files.
+//
+export function buildBotValuations(
+  players: Player[],
+  traits: BotTraits,
+  rng: RNG,
+  noiseK: number = NOISE_K,
+  centering: number = CENTERING,
+): Map<string, number> {
   const values = new Map<string, number>()
   for (const player of players) {
-    const base = player.expected + CENTERING
+    const base = player.expected + centering
     const posMult = traits.positionBias[player.pos]
     const starMult = 1 + traits.starPreference * (player.expected / 70)
     const noiseWidth =
-      player.sd * traits.noiseScale * NOISE_K * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
+      player.sd * traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
     const noise = randNormal(rng, 0, noiseWidth)
     const value = (base * posMult * starMult + noise) * traits.aggression
     values.set(playerKey(player), Math.max(0, value))
@@ -49,25 +59,23 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 // §4.1 — how far off "par" clearing prices run at this point in the draft.
-// The 10-element `timingMultiplier` array is the finer-grained, overall
-// curve; `positionTiming` gives the same shape per position but only as
-// three anchor points (early/mid/late). We use the decile curve as the
-// baseline and blend in the position curve (interpolated smoothly between
-// its anchors) as a positional adjustment on top of it. DEF has no
-// position-specific curve in the data, so it falls back to the overall
-// curve alone.
+// `positionTiming` gives "the same effect" as the overall decile curve but
+// split by position — i.e. it's a more specific replacement for a position
+// that has one, not an extra discount layered on top of the overall curve
+// (blending the two average two readings of the same underlying effect and
+// ends up over-discounting). DEF has no position-specific curve in the
+// data, so it falls back to the overall decile curve.
 export function timingFactor(state: DraftState, pos: Position): number {
   const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
   const progress = totalSlots > 0 ? Math.min(1, state.pickNumber / totalSlots) : 0
-  const decile = Math.min(9, Math.floor(progress * 10))
-  const overall = state.data.calibration.timingMultiplier[decile] ?? 1
 
   const pt = state.data.calibration.positionTiming[pos]
-  if (!pt) return overall
+  if (pt) {
+    return progress <= 0.5 ? lerp(pt.early, pt.mid, progress / 0.5) : lerp(pt.mid, pt.late, (progress - 0.5) / 0.5)
+  }
 
-  const positional =
-    progress <= 0.5 ? lerp(pt.early, pt.mid, progress / 0.5) : lerp(pt.mid, pt.late, (progress - 0.5) / 0.5)
-  return (overall + positional) / 2
+  const decile = Math.min(9, Math.floor(progress * 10))
+  return state.data.calibration.timingMultiplier[decile] ?? 1
 }
 
 // §4.2 — live inflation: how much money is left on the table relative to

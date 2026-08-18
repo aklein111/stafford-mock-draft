@@ -5,11 +5,21 @@
 // aren't expected to need tuning, but live here so they're all in one place.
 
 // §3.2 — how much bots privately disagree about a player's value, and a
-// global centering offset on the anchor price. Both start neutral (no
-// widening beyond the raw data, no shift) until the calibration harness
-// tunes them against real clearing-price data.
+// global centering offset on the anchor price. Tuned via `npm run
+// calibrate` (scripts/calibrate.ts) against 200 headless bots-only drafts,
+// per spec §4.3. NOISE_K turned out to have very little effect on the
+// result (see the harness comment for why) and is left at its neutral
+// default; CENTERING=1 was the best of an extensive sweep — it brings the
+// $60+, $40-59, and $1-9 expected-price buckets within the spec's 5%
+// target. The $10-24 and $25-39 buckets remain ~7-12% under even at the
+// best setting found; that gap is structural (needFactor's flex/bench
+// 0.80 discount and the real historical timingFactor curve both apply
+// most heavily to exactly this price range, for a player drafted in the
+// middle third of the draft) and isn't reachable by these two knobs alone
+// without loosening a spec-given constant. Documented in detail in
+// scripts/calibrate.ts.
 export const NOISE_K = 1.0
-export const CENTERING = 0
+export const CENTERING = 1
 
 // §3.2 — widen noise for players with no real Yahoo AAV to anchor on.
 export const UNMATCHED_YAHOO_NOISE_MULT = 1.5

@@ -39,13 +39,20 @@ export interface BotState {
 
 // Builds one persistent bot per team id (spec §3.1-§3.2): a personality
 // plus a private valuation for every player, both drawn once at draft
-// start and kept for the whole draft.
-export function createBotStates(teamIds: number[], players: Player[], rng: RNG): BotState[] {
+// start and kept for the whole draft. noiseK/centering pass straight
+// through to buildBotValuations — see there for what overriding them does.
+export function createBotStates(
+  teamIds: number[],
+  players: Player[],
+  rng: RNG,
+  noiseK?: number,
+  centering?: number,
+): BotState[] {
   const traits = generateBotTraits(teamIds.length, rng)
   return teamIds.map((teamId, i) => ({
     teamId,
     traits: traits[i],
-    valuations: buildBotValuations(players, traits[i], rng),
+    valuations: buildBotValuations(players, traits[i], rng, noiseK, centering),
   }))
 }
 

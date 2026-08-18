@@ -10,10 +10,20 @@ import { createBotStates, createRealBotMaxBidFn } from './bots'
 import { createBotNominationStrategy } from './nomination'
 import { runFullDraft } from './engine'
 
-export function createFullBotDraft(data: DraftData, seed: number, teamNames?: string[]): DraftState {
+export interface CalibrationOverrides {
+  noiseK?: number
+  centering?: number
+}
+
+export function createFullBotDraft(
+  data: DraftData,
+  seed: number,
+  teamNames?: string[],
+  overrides?: CalibrationOverrides,
+): DraftState {
   const state = createInitialState(data, seed, teamNames)
   const teamIds = state.teams.map((t) => t.id)
-  const botStates = createBotStates(teamIds, data.players, state.rng)
+  const botStates = createBotStates(teamIds, data.players, state.rng, overrides?.noiseK, overrides?.centering)
   const maxBidFn = createRealBotMaxBidFn(botStates)
   const nominate = createBotNominationStrategy(botStates)
   runFullDraft(state, maxBidFn, nominate)
