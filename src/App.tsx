@@ -1,16 +1,10 @@
+import { useState } from 'react'
 import { draftData } from './sim/data'
+import { DraftScreen } from './ui/DraftScreen'
 
-// Placeholder screen. The real interface (§5 of the spec) is built in a
-// later phase; this just confirms the data loads and the project runs.
 export default function App() {
-  return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>Stafford Mock Draft</h1>
-      <p>
-        Data loaded: {draftData.players.length} players, {draftData.meta.teams} teams, $
-        {draftData.meta.budget} budget each.
-      </p>
-      <p>The draft engine and UI are still under construction.</p>
-    </div>
-  )
+  // A fresh random seed per session for now. Phase 6 adds a visible seed
+  // and a "restart with same seed" control per spec §5's Pacing section.
+  const [seed] = useState(() => Date.now())
+  return <DraftScreen data={draftData} seed={seed} />
 }

@@ -10,7 +10,7 @@ export interface AuctionResult {
   price: number
 }
 
-interface Bid {
+export interface Bid {
   team: Team
   maxBid: number
 }
@@ -36,7 +36,9 @@ function gatherBids(state: DraftState, player: Player, maxBidFn: MaxBidFn): Bid[
 // competing bid (or the $1 minimum if they were the only bidder) — the
 // standard result of an English auction where everyone raises as long as
 // it's worth it to them. `bids` must already be sorted highest-first.
-function settleBids(bids: Bid[]): AuctionResult {
+// Exported so humanAuction.ts can reuse the exact same resolution math for
+// a live, human-inclusive auction instead of duplicating it.
+export function settleBids(bids: Bid[]): AuctionResult {
   const winner = bids[0].team
   const winnerMaxBid = bids[0].maxBid
   const secondBid = bids.length > 1 ? bids[1].maxBid : 0
@@ -86,6 +88,24 @@ function removeFromUndrafted(state: DraftState, player: Player) {
   state.undrafted = state.undrafted.filter((p) => !(p.name === player.name && p.team === player.team))
 }
 
+// Advances pickNumber, removes the player from the pool, and — if someone
+// won — assigns them and records the pick. Shared by runDraftStep and by
+// the UI's interactive draft controller (useDraftController.ts), so a
+// human-inclusive auction resolved via humanAuction.ts's finalizeAuction()
+// gets applied identically to a bot-only one.
+export function applyAuctionResult(state: DraftState, player: Player, result: AuctionResult | null): void {
+  state.pickNumber += 1
+  removeFromUndrafted(state, player)
+
+  if (result?.winner) {
+    assignPlayer(result.winner, player, result.price, state.pickNumber)
+    state.drafted.push({ player, price: result.price, pickNumber: state.pickNumber })
+    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) to ${result.winner.name} for $${result.price}`)
+  } else {
+    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) found no bidders and was discarded`)
+  }
+}
+
 // Runs one nominate -> auction -> assign cycle. Returns false if the draft
 // was already complete or nothing was left to nominate, meaning nothing
 // happened.
@@ -103,17 +123,7 @@ export function runDraftStep(
   if (!player) return false
 
   const result = resolveLiveAuction(state, player, maxBidFn)
-  state.pickNumber += 1
-  removeFromUndrafted(state, player)
-
-  if (result.winner) {
-    assignPlayer(result.winner, player, result.price, state.pickNumber)
-    state.drafted.push({ player, price: result.price, pickNumber: state.pickNumber })
-    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) to ${result.winner.name} for $${result.price}`)
-  } else {
-    state.log.push(`Pick ${state.pickNumber}: ${player.name} (${player.pos}) found no bidders and was discarded`)
-  }
-
+  applyAuctionResult(state, player, result)
   return true
 }
 
