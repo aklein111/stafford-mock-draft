@@ -13,6 +13,7 @@ import { runFullDraft } from './engine'
 export interface CalibrationOverrides {
   noiseK?: number
   centering?: number
+  backupQbFactor?: number
 }
 
 export function createFullBotDraft(
@@ -24,7 +25,7 @@ export function createFullBotDraft(
   const state = createInitialState(data, seed, teamNames)
   const teamIds = state.teams.map((t) => t.id)
   const botStates = createBotStates(teamIds, data.players, state.rng, overrides?.noiseK, overrides?.centering)
-  const maxBidFn = createRealBotMaxBidFn(botStates)
+  const maxBidFn = createRealBotMaxBidFn(botStates, overrides?.backupQbFactor)
   const nominate = createBotNominationStrategy(botStates)
   runFullDraft(state, maxBidFn, nominate)
   return state

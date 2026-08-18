@@ -9,6 +9,7 @@ import type { RNG } from './rng'
 import { randNormal } from './rng'
 import type { BotTraits } from './botTraits'
 import {
+  BACKUP_QB_NEED_FACTOR,
   CENTERING,
   FLEX_OR_BENCH_NEED_FACTOR,
   INFLATION_DAMPING,
@@ -99,9 +100,27 @@ function dollarsPerSlot(team: Team): number {
 // §3.4 — roster need. Whether a team is even eligible to bid at all is
 // enforced centrally by the engine before any of this runs (see
 // engine.ts); this only decides how *eager* an eligible team is.
-export function needFactor(team: Team, player: Player, disciplineDecay: number): number {
+// backupQbFactor defaults to the module constant but can be overridden —
+// the calibration harness sweeps it against calibration.avgRosteredByPos.QB
+// without needing to edit source files (same pattern as noiseK/centering).
+export function needFactor(
+  team: Team,
+  player: Player,
+  disciplineDecay: number,
+  backupQbFactor: number = BACKUP_QB_NEED_FACTOR,
+): number {
   const slot = pickSlotFor(team, player.pos)
-  let factor = slot && slot.type === player.pos ? 1.0 : FLEX_OR_BENCH_NEED_FACTOR
+  let factor: number
+  if (slot && slot.type === player.pos) {
+    factor = 1.0
+  } else if (slot && slot.type === 'BENCH' && player.pos === 'QB') {
+    // A backup QB is a much weaker want than a bench RB/WR/TE (bye-week
+    // flex/handcuff value vs. mostly dead weight), so it gets its own,
+    // lower discount rather than sharing FLEX_OR_BENCH_NEED_FACTOR.
+    factor = backupQbFactor
+  } else {
+    factor = FLEX_OR_BENCH_NEED_FACTOR
+  }
 
   const remaining = openSlots(team).length
   const hasUnfilledStarter = team.slots.some((s) => s.filled === null && s.type !== 'BENCH')

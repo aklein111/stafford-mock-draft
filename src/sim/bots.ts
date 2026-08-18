@@ -61,7 +61,8 @@ export function createBotStates(
 // need, live inflation, and a per-player roll for "locked in"
 // irrationality. The engine separately caps the result at the team's
 // legal max bid, so this doesn't need to worry about overspending.
-export function createRealBotMaxBidFn(botStates: BotState[]): MaxBidFn {
+// backupQbFactor passes straight through to needFactor.
+export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
 
   return (state, team, player) => {
@@ -70,7 +71,7 @@ export function createRealBotMaxBidFn(botStates: BotState[]): MaxBidFn {
 
     const anchor = bot.valuations.get(playerKey(player)) ?? player.expected
     const timing = timingFactor(state, player.pos)
-    const need = needFactor(team, player, bot.traits.disciplineDecay)
+    const need = needFactor(team, player, bot.traits.disciplineDecay, backupQbFactor)
     const inflation = inflationFactor(computeInflation(state))
     const lockIn = rollLockIn(state.rng)
 

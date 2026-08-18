@@ -15,24 +15,36 @@
 
 import { draftData } from '../src/sim/data'
 import { createFullBotDraft } from '../src/sim/draft'
-import { NOISE_K as DEFAULT_NOISE_K, CENTERING as DEFAULT_CENTERING } from '../src/sim/constants'
+import {
+  NOISE_K as DEFAULT_NOISE_K,
+  CENTERING as DEFAULT_CENTERING,
+  BACKUP_QB_NEED_FACTOR as DEFAULT_BACKUP_QB_NEED_FACTOR,
+} from '../src/sim/constants'
 import type { Position } from '../src/sim/types'
 
 interface Args {
   drafts: number
   noiseK: number
   centering: number
+  backupQbFactor: number
   seed: number
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { drafts: 200, noiseK: DEFAULT_NOISE_K, centering: DEFAULT_CENTERING, seed: 100000 }
+  const args: Args = {
+    drafts: 200,
+    noiseK: DEFAULT_NOISE_K,
+    centering: DEFAULT_CENTERING,
+    backupQbFactor: DEFAULT_BACKUP_QB_NEED_FACTOR,
+    seed: 100000,
+  }
   for (const raw of argv) {
     const [key, value] = raw.replace(/^--/, '').split('=')
     if (value === undefined) continue
     if (key === 'drafts') args.drafts = Number(value)
     else if (key === 'noiseK') args.noiseK = Number(value)
     else if (key === 'centering') args.centering = Number(value)
+    else if (key === 'backupQbFactor') args.backupQbFactor = Number(value)
     else if (key === 'seed') args.seed = Number(value)
   }
   return args
@@ -54,7 +66,9 @@ function main() {
   const args = parseArgs(process.argv.slice(2))
   const totalSlots = draftData.meta.teams * draftData.meta.rosterSpots
 
-  console.log(`Running ${args.drafts} headless bots-only drafts (NOISE_K=${args.noiseK}, CENTERING=${args.centering})...\n`)
+  console.log(
+    `Running ${args.drafts} headless bots-only drafts (NOISE_K=${args.noiseK}, CENTERING=${args.centering}, BACKUP_QB_NEED_FACTOR=${args.backupQbFactor})...\n`,
+  )
 
   const bucketSums = BUCKETS.map(() => ({ n: 0, sumExpected: 0, sumPrice: 0 }))
   let totalTeamSpend = 0
@@ -67,7 +81,11 @@ function main() {
 
   for (let i = 0; i < args.drafts; i++) {
     const seed = args.seed + i
-    const state = createFullBotDraft(draftData, seed, undefined, { noiseK: args.noiseK, centering: args.centering })
+    const state = createFullBotDraft(draftData, seed, undefined, {
+      noiseK: args.noiseK,
+      centering: args.centering,
+      backupQbFactor: args.backupQbFactor,
+    })
 
     for (const team of state.teams) {
       totalTeamSpend += team.spent

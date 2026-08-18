@@ -207,6 +207,20 @@ describe('needFactor (spec §3.4)', () => {
     const team = createTeam(1, 'A', 200, ['RB', 'WR'], 2) // $200 / 4 slots = $50/slot, well over $8
     expect(needFactor(team, makePlayer({ pos: 'RB' }), 1)).toBeCloseTo(1.05)
   })
+
+  it('a backup QB gets its own (lower) factor, distinct from the flex/bench rate', () => {
+    const team = createTeam(1, 'A', 28, ['QB'], 2) // $28 / 3 slots = $9.3/slot -> triggers the rich bonus
+    assignPlayer(team, makePlayer({ name: 'QB1', pos: 'QB' }), 5, 1) // starter QB filled; one bench slot is QB-eligible
+    // Without the override this would be BACKUP_QB_NEED_FACTOR from constants.ts; passing 0.3 explicitly
+    // decouples this test from that tuned value, matching the pattern used for noiseK/centering elsewhere.
+    expect(needFactor(team, makePlayer({ pos: 'QB' }), 1, 0.3)).toBeCloseTo(0.3 * 1.05)
+  })
+
+  it('a bench RB/WR/TE still gets the ordinary flex/bench factor, unaffected by backupQbFactor', () => {
+    const team = createTeam(1, 'A', 28, ['RB'], 2)
+    assignPlayer(team, makePlayer({ name: 'RB1', pos: 'RB' }), 5, 1)
+    expect(needFactor(team, makePlayer({ pos: 'RB' }), 1, 0.1)).toBeCloseTo(0.8 * 1.05)
+  })
 })
 
 describe('isPoorPerSlot (spec §3.4)', () => {

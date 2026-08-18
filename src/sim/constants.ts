@@ -26,6 +26,18 @@ export const UNMATCHED_YAHOO_NOISE_MULT = 1.5
 
 // §3.4 — roster-need adjustments.
 export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
+
+// Not from the spec's §3.4 list — this is for the bench-QB slot added
+// after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`
+// against calibration.avgRosteredByPos.QB (target 17.4/draft): bots were
+// grabbing a backup QB as often as a bench RB/WR/TE (both at
+// FLEX_OR_BENCH_NEED_FACTOR), overshooting to ~20/draft, since RB/WR/TE
+// supply is nearly exhausted by the time bench slots fill and a cheap
+// backup QB becomes the path of least resistance. A backup QB is weaker
+// value than a bench flex player in real drafts (mostly bye-week
+// insurance, not usable production), so it gets its own, lower factor.
+// 0.3 landed QB at 17.7/draft (target 17.4) across 200 drafts.
+export const BACKUP_QB_NEED_FACTOR = 0.3
 export const LATE_DRAFT_SLOTS_THRESHOLD = 4
 export const LATE_DRAFT_MAX_BOOST = 0.25 // "up to 1.25"
 export const RICH_PER_SLOT_THRESHOLD = 8
