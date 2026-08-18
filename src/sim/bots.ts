@@ -67,7 +67,7 @@ export function createBotStates(
     traits: personalities[i].traits,
     valuations: buildBotValuations(data.players, personalities[i].traits, rng, noiseK, centering),
     budgetPlanArchetype: budgetPlanArchetypes[i],
-    budgetPlan: generateBudgetPlan(budgetPlanArchetypes[i], data.meta.budget, starterCount, benchCount),
+    budgetPlan: generateBudgetPlan(budgetPlanArchetypes[i], data.meta.budget, starterCount, benchCount, rng),
   }))
 }
 

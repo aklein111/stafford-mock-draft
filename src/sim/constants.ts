@@ -53,6 +53,24 @@ export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
 // when eligibility is down to a single team.
 export const ROOM_DEMAND_MIN_FACTOR = 0.6
 
+// REVISIONS.md Change 3, step 5 — a real bidding war needs a real chance
+// of happening. Step 4 made generateBudgetPlan fully deterministic (no
+// rng — the old per-slot shuffle was the position-pinning bug it fixed),
+// which had a side effect: an archetype's ceiling for its best pick is now
+// an *identical fixed number every single draft*. Since that ceiling is
+// almost always what determines an elite player's price (see bots.ts),
+// the top of the pool ended up hugging that fixed number every time with
+// almost no variance — measured directly: the pool's best few players
+// landed below blended in 88%+ of simulations even after the ceiling's
+// average level was raised (checkVariance.ts), well past REVISIONS'
+// 80% one-sidedness bar. jitterTopSlot (budgetPlan.ts) re-randomizes each
+// bot's single biggest plan entry within this range every draft, so which
+// bots have real room to compete for the best players on the board varies
+// draft to draft, the way it would for real managers walking in with
+// different plans each time.
+export const PLAN_TOP_JITTER_MIN = 0.5
+export const PLAN_TOP_JITTER_MAX = 2.0
+
 // Not from the spec's §3.4 list — this is for the bench-QB slot added
 // after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`
 // against calibration.avgRosteredByPos.QB (target 17.4/draft): bots were

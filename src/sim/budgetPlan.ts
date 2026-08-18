@@ -12,6 +12,7 @@
 // bottomless room elsewhere. That planning is what actually produces
 // realistic top-of-the-pool restraint.
 
+import { PLAN_TOP_JITTER_MAX, PLAN_TOP_JITTER_MIN } from './constants'
 import type { RNG } from './rng'
 import { openSlots, pickSlotFor, type Team } from './roster'
 import type { Player } from './types'
@@ -35,11 +36,12 @@ export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
 // (STARS_AND_SCRUBS) had real room above ~$45, elite players were clearing
 // reliably below their true value — measured directly, e.g. the pool's
 // single best player landing below `blended` in 97%+ of simulations
-// (checkVariance.ts). Steepening BALANCED gives the other ten bots a
-// real top slot too (~$69 at 0.65), so there's genuine competitive depth
-// near the top instead of just one bot with room to spend. Re-tuned
-// against both calibrate.ts (so this doesn't re-break the step 4 shape
-// targets) and checkVariance.ts (so elite players stop being one-sided).
+// (checkVariance.ts). Steepening BALANCED gives the other ten bots a real
+// top slot too (~$59 at 0.75, before jitterTopSlot's per-draft swing), so
+// there's genuine competitive depth near the top instead of just one bot
+// with room to spend. Re-tuned against both calibrate.ts (so this doesn't
+// re-break the step 4 shape targets) and checkVariance.ts (so elite
+// players stop being one-sided).
 const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
   STARS_AND_SCRUBS: 0.55,
   BALANCED: 0.75,
@@ -86,6 +88,44 @@ function decayCurve(count: number, decay: number, total: number): number[] {
   return rounded.sort((a, b) => b - a)
 }
 
+// Re-randomizes a plan's single biggest entry within
+// [PLAN_TOP_JITTER_MIN, PLAN_TOP_JITTER_MAX] of its base value, then
+// rescales every other entry so the plan still sums to exactly the same
+// total (same rounding/remainder approach as decayCurve, and re-sorted
+// descending afterward so computePlannedMaxBid's sorted-biggest-first
+// invariant holds regardless of how the jitter landed).
+//
+// REVISIONS.md Change 3, step 5: without this, a bot archetype's ceiling
+// for its best pick is an identical fixed number every single draft (the
+// decay curve is pure math, no randomness), so an elite player's price
+// hugs that fixed ceiling every time — measured directly, the pool's best
+// few players still landed below blended 88%+ of the time even after
+// raising the ceiling's average level, well past REVISIONS' 80%
+// one-sidedness bar. This makes which bots have real room to compete for
+// the best players on the board vary draft to draft, the way it would for
+// real managers walking in with different plans each time.
+function jitterTopSlot(plan: number[], rng: RNG): number[] {
+  if (plan.length === 0) return plan
+  const total = plan.reduce((a, b) => a + b, 0)
+  const factor = PLAN_TOP_JITTER_MIN + rng() * (PLAN_TOP_JITTER_MAX - PLAN_TOP_JITTER_MIN)
+  const maxTop = total - MIN_PLAN_PER_SLOT * (plan.length - 1)
+  const jitteredTop = Math.min(maxTop, Math.max(MIN_PLAN_PER_SLOT, Math.round(plan[0] * factor)))
+
+  const rest = plan.slice(1)
+  const restTarget = total - jitteredTop
+  const restSum = rest.reduce((a, b) => a + b, 0)
+  const rescaledRest =
+    restSum > 0 ? rest.map((v) => Math.max(MIN_PLAN_PER_SLOT, Math.round((v / restSum) * restTarget))) : rest
+
+  const combined = [jitteredTop, ...rescaledRest]
+  const diff = total - combined.reduce((a, b) => a + b, 0)
+  if (diff !== 0) {
+    const maxIdx = combined.indexOf(Math.max(...combined))
+    combined[maxIdx] += diff
+  }
+  return combined.sort((a, b) => b - a)
+}
+
 // Builds a plan of dollar targets, one per roster spot, sorted biggest
 // first — deliberately *not* tied to a specific slot or position. An
 // earlier version assigned the curve to team.slots by index (with the
@@ -100,8 +140,10 @@ export function generateBudgetPlan(
   totalBudget: number,
   starterCount: number,
   benchCount: number,
+  rng: RNG,
 ): number[] {
-  return decayCurve(starterCount + benchCount, DECAY_BY_ARCHETYPE[archetype], totalBudget)
+  const base = decayCurve(starterCount + benchCount, DECAY_BY_ARCHETYPE[archetype], totalBudget)
+  return jitterTopSlot(base, rng)
 }
 
 // The reserve-based cap (Fix 2a): how much of a team's remaining budget is

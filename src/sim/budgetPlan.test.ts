@@ -44,33 +44,50 @@ describe('assignBudgetPlanArchetypes (REVISIONS.md Fix 2a)', () => {
 describe('generateBudgetPlan (REVISIONS.md Fix 2a)', () => {
   it('always sums to exactly the total budget, with every slot at least $1', () => {
     for (const archetype of ['STARS_AND_SCRUBS', 'BALANCED', 'EVEN_SPREAD'] as const) {
-      const plan = generateBudgetPlan(archetype, 200, 9, 5)
-      expect(plan).toHaveLength(14)
-      expect(plan.reduce((a, b) => a + b, 0)).toBe(200)
-      for (const share of plan) expect(share).toBeGreaterThanOrEqual(1)
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const plan = generateBudgetPlan(archetype, 200, 9, 5, mulberry32(seed))
+        expect(plan).toHaveLength(14)
+        expect(plan.reduce((a, b) => a + b, 0)).toBe(200)
+        for (const share of plan) expect(share).toBeGreaterThanOrEqual(1)
+      }
     }
   })
 
   it('is sorted biggest-first, not tied to any slot or position', () => {
-    const plan = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5)
-    for (let i = 1; i < plan.length; i++) {
-      expect(plan[i]).toBeLessThanOrEqual(plan[i - 1])
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const plan = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(seed))
+      for (let i = 1; i < plan.length; i++) {
+        expect(plan[i]).toBeLessThanOrEqual(plan[i - 1])
+      }
     }
   })
 
   it('stars-and-scrubs concentrates far more than even-spread', () => {
-    const stars = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5)
-    const even = generateBudgetPlan('EVEN_SPREAD', 200, 9, 5)
+    const stars = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(1))
+    const even = generateBudgetPlan('EVEN_SPREAD', 200, 9, 5, mulberry32(1))
     const spread = (plan: number[]) => Math.max(...plan) - Math.min(...plan)
     expect(spread(stars)).toBeGreaterThan(spread(even))
     // Even-spread should land close to a flat 200/14 ~ 14.3 per slot.
     for (const share of even) expect(share).toBeGreaterThan(10)
   })
 
-  it('is deterministic — no randomness involved', () => {
-    const a = generateBudgetPlan('BALANCED', 200, 9, 5)
-    const b = generateBudgetPlan('BALANCED', 200, 9, 5)
+  it('is deterministic for a given seed', () => {
+    const a = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(9))
+    const b = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(9))
     expect(a).toEqual(b)
+  })
+
+  it('the top slot varies draft to draft (REVISIONS.md Change 3, step 5)', () => {
+    // Without per-draft variance in the ceiling, an archetype's best-pick
+    // room is identical every draft, which is what made elite players
+    // land below blended in 88%+ of simulations even after the ceiling's
+    // average level was raised.
+    const topValues = new Set<number>()
+    for (let seed = 0; seed < 20; seed++) {
+      const plan = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(seed))
+      topValues.add(plan[0])
+    }
+    expect(topValues.size).toBeGreaterThan(1)
   })
 })
 
