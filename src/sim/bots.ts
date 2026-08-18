@@ -1,8 +1,9 @@
 import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
-import type { Player } from './types'
+import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
 import { generateBotPersonalities, type Archetype, type BotTraits } from './botTraits'
+import { assignBudgetPlanArchetypes, computePlannedMaxBid, generateBudgetPlan, type BudgetPlanArchetype } from './budgetPlan'
 import {
   buildBotValuations,
   computeInflation,
@@ -36,35 +37,47 @@ export interface BotState {
   archetype: Archetype
   traits: BotTraits
   valuations: Map<string, number>
+  budgetPlanArchetype: BudgetPlanArchetype
+  budgetPlan: number[]
 }
 
-// Builds one persistent bot per team id (spec §3.1-§3.2): a personality
-// plus a private valuation for every player, both drawn once at draft
+// Builds one persistent bot per team id (spec §3.1-§3.2, plus REVISIONS.md
+// Fix 2a's budget plan): a personality, a private valuation for every
+// player, and a planned per-slot spending target, all drawn once at draft
 // start and kept for the whole draft. noiseK/centering pass straight
 // through to buildBotValuations — see there for what overriding them does.
-// The archetype label is kept alongside for the post-draft personality
+// The archetype labels are kept alongside for the post-draft personality
 // reveal (spec §5) — never surfaced in the UI before the draft ends.
 export function createBotStates(
   teamIds: number[],
-  players: Player[],
+  data: DraftData,
   rng: RNG,
   noiseK?: number,
   centering?: number,
 ): BotState[] {
   const personalities = generateBotPersonalities(teamIds.length, rng)
+  const budgetPlanArchetypes = assignBudgetPlanArchetypes(teamIds.length, rng)
+  const starterCount = data.meta.starters.length
+  const benchCount = data.meta.bench
+
   return teamIds.map((teamId, i) => ({
     teamId,
     archetype: personalities[i].archetype,
     traits: personalities[i].traits,
-    valuations: buildBotValuations(players, personalities[i].traits, rng, noiseK, centering),
+    valuations: buildBotValuations(data.players, personalities[i].traits, rng, noiseK, centering),
+    budgetPlanArchetype: budgetPlanArchetypes[i],
+    budgetPlan: generateBudgetPlan(budgetPlanArchetypes[i], data.meta.budget, starterCount, benchCount, rng),
   }))
 }
 
-// The full maxBid function (spec §3.3): the bot's private anchor
-// valuation, adjusted by where we are in the draft, this team's roster
-// need, live inflation, and a per-player roll for "locked in"
-// irrationality. The engine separately caps the result at the team's
-// legal max bid, so this doesn't need to worry about overspending.
+// The full maxBid function (spec §3.3, capped per REVISIONS.md Fix 2a):
+// the bot's private anchor valuation, adjusted by where we are in the
+// draft, this team's roster need, live inflation, and a per-player roll
+// for "locked in" irrationality — then capped at what the bot's own
+// budget plan has reserved for every other slot it still needs to fill.
+// The engine separately enforces the hard legal-max-bid floor on top of
+// this, so neither this function nor its caller needs to worry about a
+// team going roster-incomplete.
 // backupQbFactor passes straight through to needFactor.
 export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
@@ -81,6 +94,9 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
 
     let maxBid = anchor * timing * need * inflation * lockIn
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
+
+    const plannedCap = computePlannedMaxBid(team, player, bot.budgetPlan)
+    maxBid = Math.min(maxBid, plannedCap)
 
     return Math.max(0, Math.round(maxBid))
   }

@@ -100,7 +100,7 @@ function createInternals(data: DraftData, seed: number, humanName: string): Cont
   const humanTeam = state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
   humanTeam.name = humanName
   const botTeamIds = state.teams.filter((t) => t.id !== HUMAN_TEAM_ID).map((t) => t.id)
-  const botStates = createBotStates(botTeamIds, data.players, state.rng)
+  const botStates = createBotStates(botTeamIds, data, state.rng)
   return {
     state,
     botStates,
