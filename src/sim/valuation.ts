@@ -4,7 +4,7 @@
 
 import type { DraftState } from './draftState'
 import type { Player, Position } from './types'
-import { openSlots, pickSlotFor, type Team } from './roster'
+import { canBidOnPosition, openSlots, pickSlotFor, type Team } from './roster'
 import type { RNG } from './rng'
 import { randNormal } from './rng'
 import type { BotTraits } from './botTraits'
@@ -22,6 +22,7 @@ import {
   POOR_PER_SLOT_THRESHOLD,
   RICH_PER_SLOT_BOOST,
   RICH_PER_SLOT_THRESHOLD,
+  ROOM_DEMAND_MIN_FACTOR,
   UNMATCHED_YAHOO_NOISE_MULT,
 } from './constants'
 
@@ -132,6 +133,22 @@ export function needFactor(
   if (dollarsPerSlot(team) > RICH_PER_SLOT_THRESHOLD) factor *= 1 + RICH_PER_SLOT_BOOST
 
   return factor
+}
+
+// REVISIONS.md Change 3, step 5 — room-wide scarcity. needFactor only
+// captures how much *this* team wants the position; it says nothing about
+// how many other teams are still realistically in the market for it,
+// which is what actually produces a late-draft bargain in a real auction.
+// Scales every bid down as the fraction of still-eligible teams drops,
+// regardless of the bidding team's own need — even a team with a
+// dedicated open slot should pay less when there's little real
+// competition for it.
+export function roomDemandFactor(state: DraftState, pos: Position): number {
+  const total = state.teams.length
+  if (total === 0) return 1
+  const eligible = state.teams.filter((t) => canBidOnPosition(t, pos)).length
+  const fraction = eligible / total
+  return lerp(ROOM_DEMAND_MIN_FACTOR, 1, fraction)
 }
 
 export function isPoorPerSlot(team: Team): boolean {

@@ -38,6 +38,21 @@ export const UNMATCHED_YAHOO_NOISE_MULT = 1.5
 // §3.4 — roster-need adjustments.
 export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
 
+// REVISIONS.md Change 3, step 5 — room-wide scarcity, not just a bidding
+// team's own need. FLEX_OR_BENCH_NEED_FACTOR only reflects whether *this*
+// team has a dedicated slot open; it doesn't discount at all when few
+// *other* teams are still in the market for the position, which is what
+// actually produces a late-draft bargain in a real auction (fewer real
+// competitors -> lower clearing price, regardless of any one bidder's own
+// desire). The step 5 variance check found this missing: RB/WR/TE showed
+// almost no price/blended response to how many teams still had an
+// eligible slot (correlation ~0), because those positions share
+// FLEX+BENCH so broadly that "eligible" rarely excludes anyone until very
+// late. roomDemandFactor (valuation.ts) scales every bid down as the
+// fraction of still-eligible teams drops, bottoming out at this factor
+// when eligibility is down to a single team.
+export const ROOM_DEMAND_MIN_FACTOR = 0.6
+
 // Not from the spec's §3.4 list — this is for the bench-QB slot added
 // after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`
 // against calibration.avgRosteredByPos.QB (target 17.4/draft): bots were

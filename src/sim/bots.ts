@@ -12,6 +12,7 @@ import {
   needFactor,
   playerKey,
   rollLockIn,
+  roomDemandFactor,
   timingFactor,
 } from './valuation'
 
@@ -71,15 +72,19 @@ export function createBotStates(
 }
 
 // The full maxBid function (spec §3.3, adjusted per REVISIONS.md Fixes
-// 2a-2b): the bot's private anchor valuation, adjusted by where we are in
-// the draft, this team's roster need, live inflation, and a per-player
-// roll for "locked in" irrationality — scaled down by the bot's restraint
-// (Fix 2b: a real manager sets a number and stops, rather than pushing to
-// the edge of what it can technically afford) — then capped at what the
-// bot's own budget plan has reserved for every other slot it still needs
-// to fill (Fix 2a). The engine separately enforces the hard legal-max-bid
-// floor on top of all of this, so neither this function nor its caller
-// needs to worry about a team going roster-incomplete.
+// 2a-2b and step 5's room-demand fix): the bot's private anchor valuation,
+// adjusted by where we are in the draft, this team's own roster need, how
+// much real room-wide competition still exists for the position
+// (roomDemandFactor — step 5: a bidding team's own need isn't what makes a
+// late-draft player cheap, a lack of *other* competing bidders is), live
+// inflation, and a per-player roll for "locked in" irrationality — scaled
+// down by the bot's restraint (Fix 2b: a real manager sets a number and
+// stops, rather than pushing to the edge of what it can technically
+// afford) — then capped at what the bot's own budget plan has reserved for
+// every other slot it still needs to fill (Fix 2a). The engine separately
+// enforces the hard legal-max-bid floor on top of all of this, so neither
+// this function nor its caller needs to worry about a team going
+// roster-incomplete.
 // backupQbFactor passes straight through to needFactor.
 export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
@@ -91,10 +96,11 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const anchor = bot.valuations.get(playerKey(player)) ?? player.blended
     const timing = timingFactor(state, player.pos)
     const need = needFactor(team, player, bot.traits.disciplineDecay, backupQbFactor)
+    const roomDemand = roomDemandFactor(state, player.pos)
     const inflation = inflationFactor(computeInflation(state))
     const lockIn = rollLockIn(state.rng)
 
-    let maxBid = anchor * timing * need * inflation * lockIn * bot.traits.restraint
+    let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * bot.traits.restraint
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
     const plannedCap = computePlannedMaxBid(team, player, bot.budgetPlan)
