@@ -36,7 +36,16 @@ export function PlayerPool({
       m.set(playerKey(d.player), { price: d.price, teamName: findTeamName(state, d) })
     }
     return m
-  }, [state])
+    // state itself is a stable object that useDraftController mutates in
+    // place (state.drafted.push(...) on every pick, a length truncation on
+    // undo) rather than replacing — depending on `state` here never
+    // invalidates, since the reference never changes, so this map would
+    // freeze at whatever it was on the first render and every already-
+    // drafted player would still show a live "Nominate" button forever.
+    // state.drafted.length is a primitive that actually changes on every
+    // one of those mutations, including undo's truncation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.drafted.length])
 
   const rows = useMemo(() => {
     let players = state.data.players

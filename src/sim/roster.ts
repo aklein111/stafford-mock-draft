@@ -84,6 +84,30 @@ export function pickSlotFor(team: Team, pos: Position): RosterSlot | null {
   )
 }
 
+// Guards against a real deadlock: a thin position (e.g. a league with only
+// 21 TEs against 12 teams' dedicated TE starter slots) can run out
+// entirely if teams grab it for FLEX/BENCH value before every team has
+// filled its *dedicated* slot. When that happens, whichever team is still
+// short its dedicated slot can never fill it — the nomination loop keeps
+// finding "no bidders" for a position nobody's left holding, forever.
+//
+// A team's own dedicated slot for `pos` is always safe (it can never
+// starve itself — pickSlotFor fills that first). Only a FLEX/BENCH pickup
+// is at risk of taking a player away from someone else's dedicated slot
+// that has no supply left to draw from once this one's gone, so only that
+// path is checked here.
+export function canBidOnPositionSafely(allTeams: Team[], undraftedPool: Player[], team: Team, pos: Position): boolean {
+  const slot = pickSlotFor(team, pos)
+  if (!slot) return false
+  if (slot.type === pos) return true
+
+  const remainingSupply = undraftedPool.filter((p) => p.pos === pos).length
+  const teamsStillNeedingDedicated = allTeams.filter(
+    (t) => t.id !== team.id && t.slots.some((s) => s.type === pos && s.filled === null),
+  ).length
+  return remainingSupply - 1 >= teamsStillNeedingDedicated
+}
+
 // Assigns a drafted player to a team's roster and deducts the price.
 // Returns false (and changes nothing) if the team has no eligible open slot.
 export function assignPlayer(team: Team, player: Player, price: number, pickNumber: number): boolean {

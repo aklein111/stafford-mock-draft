@@ -1,5 +1,5 @@
 import type { DraftState } from './draftState'
-import { assignPlayer, canBidOnPosition, isRosterFull, legalMaxBid, type Team } from './roster'
+import { assignPlayer, canBidOnPositionSafely, isRosterFull, legalMaxBid, type Team } from './roster'
 import type { Player } from './types'
 import { nextNominator, defaultNominationStrategy, type NominationStrategy } from './nomination'
 import type { MaxBidFn } from './bots'
@@ -20,11 +20,16 @@ export interface Bid {
 // enforced here, not left up to maxBidFn, so no bot implementation can
 // accidentally violate it. Bids are always capped at the team's legal max
 // bid (spec §1), so this can never let a team overspend.
+//
+// canBidOnPositionSafely (not the plain per-team canBidOnPosition) also
+// blocks a team from taking a thin-supply position for FLEX/BENCH value
+// when doing so would leave another team unable to ever fill its
+// dedicated slot for it — see roster.ts for the deadlock this prevents.
 function gatherBids(state: DraftState, player: Player, maxBidFn: MaxBidFn): Bid[] {
   const bids: Bid[] = []
   for (const team of state.teams) {
     if (isRosterFull(team)) continue
-    if (!canBidOnPosition(team, player.pos)) continue
+    if (!canBidOnPositionSafely(state.teams, state.undrafted, team, player.pos)) continue
     const raw = maxBidFn(state, team, player)
     const capped = Math.min(raw, legalMaxBid(team))
     if (capped >= 1) bids.push({ team, maxBid: capped })
