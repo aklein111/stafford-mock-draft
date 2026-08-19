@@ -23,7 +23,7 @@
 // 4, via the auto-calibration script against calibration.targets, not by
 // hand-adjusting it now.
 export const NOISE_K = 0.35
-export const CENTERING = 0.5
+export const CENTERING = -0.25
 
 // REVISIONS.md Fix 2b — real managers set a number and stop; a bot's
 // actual walk-away price is its computed valuation times this, not the
