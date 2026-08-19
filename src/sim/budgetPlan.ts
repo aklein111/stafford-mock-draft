@@ -44,7 +44,7 @@ export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
 // players stop being one-sided).
 const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
   STARS_AND_SCRUBS: 0.55,
-  BALANCED: 0.75,
+  BALANCED: 0.77,
   EVEN_SPREAD: 0.97,
 }
 
