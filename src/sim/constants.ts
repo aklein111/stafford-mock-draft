@@ -31,16 +31,21 @@
 // driver. Since CENTERING more negative than -0.75 breaks roster
 // completion outright (fill collapses below 20% — bots stop valuing cheap
 // players enough to bid at all) with no further gain even before that
-// point, 1.25 is calibrate.ts's own best safe candidate: 99.6% fill,
-// individual price anchors (nthMostExpensive) matching within a few
-// dollars at every N, and the residual ~3.8pt top-24-share gap is this
-// same real, understood effect — a genuinely more broadly-competitive
-// elite market than the old synthetic population — not something this
-// knob can close without breaking roster completion. Flagging as a known,
+// point, calibrate.ts's own best safe candidate is the one to use: the
+// residual ~3.8pt top-24-share gap at that candidate is this same real,
+// understood effect — a genuinely more broadly-competitive elite market
+// than the old synthetic population — not something this knob can close
+// without breaking roster completion. Flagging as a known,
 // deliberately-not-chased gap rather than a bug, same as the backup-QB
 // quantity overshoot above.
+//
+// Re-tuned 1.25 -> 1.75 after ensureNominatorOpensAtOne (engine.ts) made
+// every eligible nomination guarantee a sale: fill rate is now ~100%
+// across nearly the whole CENTERING range instead of topping out at
+// 99.6%, moving calibrate.ts's best-safe candidate up slightly. Same gap,
+// same cause, just re-measured against the new floor.
 export const NOISE_K = 0.35
-export const CENTERING = 1.25
+export const CENTERING = 1.75
 
 // REVISIONS.md Fix 2b — real managers set a number and stop; a bot's
 // actual walk-away price is its computed valuation times this, not the
