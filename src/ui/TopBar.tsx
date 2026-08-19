@@ -17,7 +17,7 @@ export function TopBar({
 
   const totalSpent = state.teams.reduce((sum, t) => sum + t.spent, 0)
   const spentFraction = state.data.meta.totalPool > 0 ? totalSpent / state.data.meta.totalPool : 0
-  const paceTarget = state.data.calibration.moneyClock[decile] ?? 1
+  const paceTarget = state.data.validationTargets.moneyClock[decile] ?? 1
 
   const inflation = computeInflation(state)
   const infFactor = inflationFactor(inflation)

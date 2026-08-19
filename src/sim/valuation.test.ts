@@ -44,15 +44,29 @@ const neutralTraits: BotTraits = {
   restraint: 1, // unused by valuation.ts's formulas; included only to satisfy the type
 }
 
-// Feeds randNormal exactly the inputs that make it return 0: cos(2*pi*0.25) = 0.
+// RAW_DATA_ADDENDUM.md Method A replaced the additive normal-noise term
+// with a residual sampled from a per-(pos,rank) empirical pool — an empty
+// pool means buildBotValuations falls back to a residual of exactly 1
+// (see valuation.ts), which is the "zero noise" case these formula-shape
+// tests want. The detailed pooling/sampling behavior itself is covered in
+// historicalResiduals.test.ts.
+function noResidualPool(): number[] {
+  return []
+}
+
+// Only used where a test needs an actual RNG value threaded through (none
+// of the formula-shape tests below do, since noResidualPool short-circuits
+// the sampling), kept for tests elsewhere in this file that need a real RNG.
 function zeroNoiseRng(): RNG {
   const seq = [0.5, 0.25]
   let i = 0
   return () => seq[i++ % seq.length]
 }
 
-// Minimal but real DraftData so timingFactor/computeInflation have real
-// calibration numbers to read.
+// Minimal but real DraftData so computeInflation/needFactor/etc. have a
+// real shape to read; leagueHistory/positionalValues/validationTargets are
+// left empty here since these tests don't exercise timingFactor (see the
+// dedicated fixture below for that).
 function makeMiniData(): DraftData {
   return {
     meta: {
@@ -67,38 +81,30 @@ function makeMiniData(): DraftData {
       historySeasons: [2024],
       generated: '2026-01-01',
     },
-    calibration: {
-      baselineInflation: 1,
-      moneyClock: [],
-      timingMultiplier: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
-      positionTiming: {
-        RB: { early: 1.2, mid: 1.0, late: 0.6 },
-        WR: { early: 1.0, mid: 1.0, late: 1.0 },
-        QB: { early: 0.9, mid: 0.6, late: 0.5 },
-        TE: { early: 0.9, mid: 0.8, late: 0.7 },
-      } as DraftData['calibration']['positionTiming'],
-      avgRosteredByPos: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 } as DraftData['calibration']['avgRosteredByPos'],
-      dollarSpotsPerTeam: 0,
-      targets: {
-        priceBands: [],
-        nthMostExpensive: {},
-        topNShareOfPool: {},
-        note: '',
-      },
-    },
+    leagueHistory: { seasons: [], rawPicks: [], formatNotes: [] },
     priceCurve: [4, 1, 1, 1],
     positionalValues: [],
-    players: [],
+    validationTargets: {
+      priceBands: [],
+      nthMostExpensive: {},
+      topNShareOfPool: {},
+      moneyClock: [],
+      avgRosteredByPos: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 },
+      dollarSpotsPerTeam: 0,
+      note: '',
+    },
+    currentPlayers: [],
   }
 }
 
-describe('buildBotValuations (spec §3.2)', () => {
+describe('buildBotValuations (spec §3.2, adjusted per RAW_DATA_ADDENDUM.md Method A)', () => {
   // These formula-shape tests pass noiseK=1, centering=0 explicitly so
   // they stay decoupled from constants.ts's tuned production CENTERING
-  // (see constants.ts and scripts/calibrate.ts for how that was chosen).
-  it('with neutral traits, zero noise, and zero centering, values equal the blended price', () => {
+  // (see constants.ts and scripts/calibrate.ts for how that was chosen),
+  // and an empty residual pool so the noise term is a no-op (residual 1).
+  it('with neutral traits, no residual pool, and zero centering, values equal the blended price', () => {
     const players = [makePlayer({ name: 'A', blended: 40 }), makePlayer({ name: 'B', blended: 10 })]
-    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 0)
+    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), noResidualPool, 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(40)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(10)
   })
@@ -106,55 +112,90 @@ describe('buildBotValuations (spec §3.2)', () => {
   it('positionBias scales the valuation for that position only', () => {
     const traits: BotTraits = { ...neutralTraits, positionBias: { ...neutralTraits.positionBias, RB: 1.2 } }
     const players = [makePlayer({ name: 'A', pos: 'RB', blended: 40 }), makePlayer({ name: 'B', pos: 'WR', blended: 40 })]
-    const values = buildBotValuations(players, traits, zeroNoiseRng(), 1, 0)
+    const values = buildBotValuations(players, traits, zeroNoiseRng(), noResidualPool, 1, 0)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(48)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(40)
   })
 
   it('centering shifts every valuation by a flat dollar amount', () => {
     const players = [makePlayer({ name: 'A', blended: 40 }), makePlayer({ name: 'B', blended: 10 })]
-    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), 1, 3)
+    const values = buildBotValuations(players, neutralTraits, zeroNoiseRng(), noResidualPool, 1, 3)
     expect(values.get(playerKey(players[0]))).toBeCloseTo(43)
     expect(values.get(playerKey(players[1]))).toBeCloseTo(13)
   })
 
   it('defaults to the tuned CENTERING constant when not explicitly overridden', () => {
     const player = makePlayer({ blended: 40 })
-    const values = buildBotValuations([player], neutralTraits, zeroNoiseRng())
+    const values = buildBotValuations([player], neutralTraits, zeroNoiseRng(), noResidualPool)
     expect(values.get(playerKey(player))).toBeCloseTo(40 + CENTERING)
   })
 
   it('never returns a negative valuation', () => {
     const traits: BotTraits = { ...neutralTraits, aggression: -1 } // absurd on purpose, just to force a negative raw value
-    const values = buildBotValuations([makePlayer({ blended: 40 })], traits, zeroNoiseRng())
+    const values = buildBotValuations([makePlayer({ blended: 40 })], traits, zeroNoiseRng(), noResidualPool)
     expect([...values.values()][0]).toBeGreaterThanOrEqual(0)
+  })
+
+  it('samples a residual from the pool and scales its deviation from 1 by noiseScale x noiseK', () => {
+    // A pool with a single residual of 2 (double the smoothed target) and
+    // an RNG that always picks index 0 -> rawResidual = 2. With
+    // noiseScale=1 and noiseK=0.5, the applied residual is 1 + (2-1)*0.5 = 1.5.
+    const pickFirst: RNG = () => 0 // Math.floor(0 * pool.length) = 0
+    const traits: BotTraits = { ...neutralTraits, noiseScale: 1 }
+    const values = buildBotValuations([makePlayer({ blended: 40 })], traits, pickFirst, () => [2], 0.5, 0)
+    expect([...values.values()][0]).toBeCloseTo(40 * 1.5)
   })
 })
 
-describe('timingFactor (spec §4.1)', () => {
-  it('reads straight off the decile curve for a position with no positional curve', () => {
+describe('timingFactor (spec §4.1, adjusted per RAW_DATA_ADDENDUM.md)', () => {
+  // The old fixed positionTiming/timingMultiplier data no longer exists —
+  // timingFactor now delegates to historicalResiduals.ts's derivation from
+  // leagueHistory.rawPicks, whose behavior is covered thoroughly in
+  // historicalResiduals.test.ts. This just checks the wiring: pickNumber
+  // maps to the right decile, and that decile's derived value comes back.
+  function makeTimingData(): DraftData {
     const data = makeMiniData()
+    data.positionalValues = [
+      { key: 'RB1', pos: 'RB', rank: 1, tier: 1, target: 40, low: 0, high: 0, sd: 0 },
+      { key: 'RB2', pos: 'RB', rank: 2, tier: 1, target: 10, low: 0, high: 0, sd: 0 },
+    ]
+    data.leagueHistory = {
+      seasons: [
+        {
+          year: 2020,
+          picks: 10,
+          totalSpend: 0,
+          hadKeepers: false,
+          keeperCount: 0,
+          keeperSpend: 0,
+          rosterFormat: 'test',
+          pricesDesc: [],
+          auctionPricesDesc: [],
+          byPos: { QB: [], RB: [], WR: [], TE: [], DEF: [], K: [] },
+        },
+      ],
+      rawPicks: [
+        { year: 2020, nominationPick: 1, player: 'Early', nflTeam: 'X', pos: 'RB', salary: 60, keeper: false }, // decile 0, residual 1.5
+        { year: 2020, nominationPick: 10, player: 'Late', nflTeam: 'X', pos: 'RB', salary: 5, keeper: false }, // decile 9, residual 0.5
+      ],
+      formatNotes: [],
+    }
+    return data
+  }
+
+  it('maps an early pickNumber to a low decile', () => {
+    const data = makeTimingData()
     const state = createInitialState(data, 1)
-    state.pickNumber = 0 // decile 0
-    // DEF has no positionTiming entry in this fixture -> falls back to the overall curve alone.
-    expect(timingFactor(state, 'DEF')).toBeCloseTo(1.0)
+    state.pickNumber = 0
+    expect(timingFactor(state, 'RB')).toBeCloseTo(1.5)
   })
 
-  it('uses the position curve alone when one exists, rather than blending with the overall curve', () => {
-    const data = makeMiniData()
-    const state = createInitialState(data, 1)
-    state.pickNumber = 0 // progress 0 -> RB "early" anchor 1.2, overall decile-0 value (1.0) unused
-    expect(timingFactor(state, 'RB')).toBeCloseTo(1.2)
-  })
-
-  it('interpolates the position curve smoothly from early to mid to late', () => {
-    const data = makeMiniData()
+  it('maps a late pickNumber to a high decile', () => {
+    const data = makeTimingData()
     const state = createInitialState(data, 1)
     const totalSlots = data.meta.teams * data.meta.rosterSpots
-    state.pickNumber = Math.round(totalSlots * 0.5) // halfway -> RB "mid" anchor 1.0
-    expect(timingFactor(state, 'RB')).toBeCloseTo(1.0)
-    state.pickNumber = totalSlots // fully done -> RB "late" anchor 0.6
-    expect(timingFactor(state, 'RB')).toBeCloseTo(0.6)
+    state.pickNumber = totalSlots
+    expect(timingFactor(state, 'RB')).toBeCloseTo(0.5)
   })
 })
 

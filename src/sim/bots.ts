@@ -4,6 +4,7 @@ import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
 import { generateBotPersonalities, type Archetype, type BotTraits } from './botTraits'
 import { assignBudgetPlanArchetypes, computePlannedMaxBid, generateBudgetPlan, type BudgetPlanArchetype } from './budgetPlan'
+import { getHistoricalDerived } from './historicalResiduals'
 import {
   buildBotValuations,
   computeInflation,
@@ -60,12 +61,13 @@ export function createBotStates(
   const budgetPlanArchetypes = assignBudgetPlanArchetypes(teamIds.length, rng)
   const starterCount = data.meta.starters.length
   const benchCount = data.meta.bench
+  const residualPool = getHistoricalDerived(data).residualPool
 
   return teamIds.map((teamId, i) => ({
     teamId,
     archetype: personalities[i].archetype,
     traits: personalities[i].traits,
-    valuations: buildBotValuations(data.players, personalities[i].traits, rng, noiseK, centering),
+    valuations: buildBotValuations(data.currentPlayers, personalities[i].traits, rng, residualPool, noiseK, centering),
     budgetPlanArchetype: budgetPlanArchetypes[i],
     budgetPlan: generateBudgetPlan(budgetPlanArchetypes[i], data.meta.budget, starterCount, benchCount, rng),
   }))

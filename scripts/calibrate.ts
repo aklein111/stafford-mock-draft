@@ -1,6 +1,6 @@
 // Calibration harness (REVISIONS.md Fix 2d): runs many headless bots-only
 // drafts and prints a comparison table against the real Stafford draft
-// shape recorded in calibration.targets — the price of the Nth-most-
+// shape recorded in validationTargets — the price of the Nth-most-
 // expensive player, what share of all the money the top N players soak up,
 // and how many players land in each price band.
 //
@@ -22,7 +22,7 @@
 // competing for the bottom of the pool), but it does it by breaking the
 // draft, not by reproducing the real one's shape. Any CENTERING candidate
 // that drops team roster completion below SAFE_FILL_RATE is excluded from
-// consideration before the two calibration.targets bars are even checked.
+// consideration before the two validationTargets bars are even checked.
 //
 // Usage:
 //   npm run calibrate                          (grid-search CENTERING)
@@ -83,7 +83,7 @@ function runDrafts(centering: number, count: number, seed: number): DraftState[]
 }
 
 function computeMetrics(states: DraftState[]): Metrics {
-  const bands = draftData.calibration.targets.priceBands
+  const bands = draftData.validationTargets.priceBands
   const nthSums: Record<number, number> = {}
   const shareSums: Record<number, number> = {}
   const bandSums = bands.map(() => 0)
@@ -134,7 +134,7 @@ function pad(s: string, width: number): string {
 }
 
 function printTable(centering: number, drafts: number, m: Metrics) {
-  const targets = draftData.calibration.targets
+  const targets = draftData.validationTargets
 
   console.log(`\n--- CENTERING=${centering}  (${drafts} drafts, NOISE_K=${NOISE_K}) ---`)
   console.log(`roster completion: ${(m.fillRate * 100).toFixed(1)}% of teams filled all slots`)
@@ -172,16 +172,16 @@ function printTable(centering: number, drafts: number, m: Metrics) {
 }
 
 function top24Gap(m: Metrics): number {
-  return Math.abs(m.share[24] - draftData.calibration.targets.topNShareOfPool['24']) * 100
+  return Math.abs(m.share[24] - draftData.validationTargets.topNShareOfPool['24']) * 100
 }
 
 function dollarBandIndex(): number {
-  return draftData.calibration.targets.priceBands.findIndex((b) => b.low === 1 && b.high === 2)
+  return draftData.validationTargets.priceBands.findIndex((b) => b.low === 1 && b.high === 2)
 }
 
 function dollarGap(m: Metrics): number {
   const idx = dollarBandIndex()
-  return Math.abs(m.bandCounts[idx] - draftData.calibration.targets.priceBands[idx].playersPerDraft)
+  return Math.abs(m.bandCounts[idx] - draftData.validationTargets.priceBands[idx].playersPerDraft)
 }
 
 function isSafe(m: Metrics): boolean {
@@ -247,7 +247,7 @@ function updateConstantsFile(newCentering: number) {
 function main() {
   const args = parseArgs(process.argv.slice(2))
 
-  console.log(`Running calibration against calibration.targets (${args.drafts} drafts/measurement, NOISE_K=${NOISE_K})`)
+  console.log(`Running calibration against validationTargets (${args.drafts} drafts/measurement, NOISE_K=${NOISE_K})`)
 
   const baselineStates = runDrafts(DEFAULT_CENTERING, args.drafts, args.seed)
   const baselineMetrics = computeMetrics(baselineStates)

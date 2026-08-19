@@ -27,7 +27,7 @@ export function createInitialState(data: DraftData, seed: number, teamNames?: st
   return {
     data,
     teams,
-    undrafted: [...data.players],
+    undrafted: [...data.currentPlayers],
     drafted: [],
     pickNumber: 0,
     nominationOrder: teams.map((t) => t.id),
