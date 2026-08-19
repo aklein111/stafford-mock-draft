@@ -1,0 +1,865 @@
+{
+ "meta": {
+  "seasons": [
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025
+  ],
+  "ownersModelled": 12,
+  "humanPlayer": "Aaron",
+  "note": "Ian played 2019 only and is excluded. 2017 has no owner labels.",
+  "picksAnalysed": 1327
+ },
+ "findings": {
+  "headline": "No manager trait is stable enough to model as a strong personality. Highest ICC is 0.33 (QB share). Within-manager year-to-year variation exceeds between-manager variation on every trait tested.",
+  "iccByTrait": {
+   "qbShare": 0.317,
+   "rbShare": 0.083,
+   "wrShare": 0.094,
+   "teShare": 0.208,
+   "top3Concentration": 0.214,
+   "shareSpentByNom40": 0.17,
+   "dollarPlayers": 0.259,
+   "biggestBuy": 0.056,
+   "overpayRatio": 0.088
+  },
+  "interpretation": "ICC above 0.5 would mean a trait is genuinely personal and repeatable. Nothing clears it. Use SHRUNK values (traits[].useThis) as each bot centre, and redraw every draft using withinOwnerSD."
+ },
+ "traitStats": {
+  "qbShare": {
+   "leagueMean": 0.0561,
+   "withinOwnerSD": 0.0362,
+   "betweenOwnerSD": 0.0247,
+   "icc": 0.317,
+   "raw": {
+    "Aaron": 0.0615,
+    "Albex": 0.0294,
+    "Biefel": 0.0307,
+    "Dovitz": 0.0225,
+    "Evan": 0.0358,
+    "Loewy": 0.0901,
+    "Roddo": 0.0813,
+    "Rollz": 0.0563,
+    "Sherman": 0.1043,
+    "Stavs": 0.0471,
+    "Sug": 0.0471,
+    "Zordo": 0.0669
+   },
+   "shrunk": {
+    "Aaron": 0.0578,
+    "Albex": 0.0476,
+    "Biefel": 0.048,
+    "Dovitz": 0.0454,
+    "Evan": 0.0497,
+    "Loewy": 0.0669,
+    "Roddo": 0.0641,
+    "Rollz": 0.0562,
+    "Sherman": 0.0714,
+    "Stavs": 0.0532,
+    "Sug": 0.0532,
+    "Zordo": 0.0595
+   },
+   "observedMin": 0.005,
+   "observedMax": 0.165
+  },
+  "rbShare": {
+   "leagueMean": 0.4722,
+   "withinOwnerSD": 0.1295,
+   "betweenOwnerSD": 0.0389,
+   "icc": 0.083,
+   "raw": {
+    "Aaron": 0.5153,
+    "Albex": 0.5099,
+    "Biefel": 0.4818,
+    "Dovitz": 0.5247,
+    "Evan": 0.4731,
+    "Loewy": 0.4451,
+    "Roddo": 0.4012,
+    "Rollz": 0.4222,
+    "Sherman": 0.5107,
+    "Stavs": 0.4361,
+    "Sug": 0.4949,
+    "Zordo": 0.4513
+   },
+   "shrunk": {
+    "Aaron": 0.4758,
+    "Albex": 0.4753,
+    "Biefel": 0.473,
+    "Dovitz": 0.4765,
+    "Evan": 0.4723,
+    "Loewy": 0.47,
+    "Roddo": 0.4663,
+    "Rollz": 0.4681,
+    "Sherman": 0.4754,
+    "Stavs": 0.4692,
+    "Sug": 0.4741,
+    "Zordo": 0.4705
+   },
+   "observedMin": 0.105,
+   "observedMax": 0.775
+  },
+  "wrShare": {
+   "leagueMean": 0.4018,
+   "withinOwnerSD": 0.122,
+   "betweenOwnerSD": 0.0393,
+   "icc": 0.094,
+   "raw": {
+    "Aaron": 0.3414,
+    "Albex": 0.3937,
+    "Biefel": 0.4487,
+    "Dovitz": 0.409,
+    "Evan": 0.4396,
+    "Loewy": 0.396,
+    "Roddo": 0.4631,
+    "Rollz": 0.3724,
+    "Sherman": 0.3236,
+    "Stavs": 0.4105,
+    "Sug": 0.406,
+    "Zordo": 0.4181
+   },
+   "shrunk": {
+    "Aaron": 0.3961,
+    "Albex": 0.4011,
+    "Biefel": 0.4062,
+    "Dovitz": 0.4025,
+    "Evan": 0.4054,
+    "Loewy": 0.4013,
+    "Roddo": 0.4076,
+    "Rollz": 0.3991,
+    "Sherman": 0.3945,
+    "Stavs": 0.4027,
+    "Sug": 0.4022,
+    "Zordo": 0.4034
+   },
+   "observedMin": 0.085,
+   "observedMax": 0.78
+  },
+  "teShare": {
+   "leagueMean": 0.0627,
+   "withinOwnerSD": 0.0557,
+   "betweenOwnerSD": 0.0285,
+   "icc": 0.208,
+   "raw": {
+    "Aaron": 0.0806,
+    "Albex": 0.0595,
+    "Biefel": 0.032,
+    "Dovitz": 0.04,
+    "Evan": 0.0451,
+    "Loewy": 0.0638,
+    "Roddo": 0.0469,
+    "Rollz": 0.1391,
+    "Sherman": 0.0493,
+    "Stavs": 0.0949,
+    "Sug": 0.0457,
+    "Zordo": 0.055
+   },
+   "shrunk": {
+    "Aaron": 0.0664,
+    "Albex": 0.062,
+    "Biefel": 0.0563,
+    "Dovitz": 0.058,
+    "Evan": 0.059,
+    "Loewy": 0.0629,
+    "Roddo": 0.0594,
+    "Rollz": 0.0785,
+    "Sherman": 0.0599,
+    "Stavs": 0.0693,
+    "Sug": 0.0591,
+    "Zordo": 0.0611
+   },
+   "observedMin": 0.005,
+   "observedMax": 0.269
+  },
+  "top3Concentration": {
+   "leagueMean": 0.6164,
+   "withinOwnerSD": 0.0695,
+   "betweenOwnerSD": 0.0363,
+   "icc": 0.214,
+   "raw": {
+    "Aaron": 0.5613,
+    "Albex": 0.5844,
+    "Biefel": 0.5938,
+    "Dovitz": 0.7044,
+    "Evan": 0.6219,
+    "Loewy": 0.6269,
+    "Roddo": 0.5769,
+    "Rollz": 0.6131,
+    "Sherman": 0.6193,
+    "Stavs": 0.605,
+    "Sug": 0.6431,
+    "Zordo": 0.6469
+   },
+   "shrunk": {
+    "Aaron": 0.6046,
+    "Albex": 0.6095,
+    "Biefel": 0.6115,
+    "Dovitz": 0.6353,
+    "Evan": 0.6176,
+    "Loewy": 0.6186,
+    "Roddo": 0.6079,
+    "Rollz": 0.6157,
+    "Sherman": 0.617,
+    "Stavs": 0.614,
+    "Sug": 0.6221,
+    "Zordo": 0.6229
+   },
+   "observedMin": 0.415,
+   "observedMax": 0.805
+  },
+  "shareSpentByNom40": {
+   "leagueMean": 0.54,
+   "withinOwnerSD": 0.1471,
+   "betweenOwnerSD": 0.0665,
+   "icc": 0.17,
+   "raw": {
+    "Aaron": 0.5251,
+    "Albex": 0.3807,
+    "Biefel": 0.5265,
+    "Dovitz": 0.5766,
+    "Evan": 0.4884,
+    "Loewy": 0.5776,
+    "Roddo": 0.5231,
+    "Rollz": 0.5112,
+    "Sherman": 0.5443,
+    "Stavs": 0.5534,
+    "Sug": 0.6681,
+    "Zordo": 0.605
+   },
+   "shrunk": {
+    "Aaron": 0.5375,
+    "Albex": 0.513,
+    "Biefel": 0.5377,
+    "Dovitz": 0.5462,
+    "Evan": 0.5312,
+    "Loewy": 0.5464,
+    "Roddo": 0.5372,
+    "Rollz": 0.5351,
+    "Sherman": 0.5407,
+    "Stavs": 0.5423,
+    "Sug": 0.5618,
+    "Zordo": 0.5511
+   },
+   "observedMin": 0.14,
+   "observedMax": 0.9296
+  },
+  "dollarPlayers": {
+   "leagueMean": 4.4018,
+   "withinOwnerSD": 1.6999,
+   "betweenOwnerSD": 1.005,
+   "icc": 0.259,
+   "raw": {
+    "Aaron": 3.5,
+    "Albex": 3.875,
+    "Biefel": 3.75,
+    "Dovitz": 5.625,
+    "Evan": 5,
+    "Loewy": 5.375,
+    "Roddo": 3.625,
+    "Rollz": 3.75,
+    "Sherman": 3.5714,
+    "Stavs": 3.25,
+    "Sug": 5,
+    "Zordo": 6.5
+   },
+   "shrunk": {
+    "Aaron": 4.1682,
+    "Albex": 4.2653,
+    "Biefel": 4.233,
+    "Dovitz": 4.7186,
+    "Evan": 4.5567,
+    "Loewy": 4.6539,
+    "Roddo": 4.2006,
+    "Rollz": 4.233,
+    "Sherman": 4.1867,
+    "Stavs": 4.1035,
+    "Sug": 4.5567,
+    "Zordo": 4.9453
+   },
+   "observedMin": 0,
+   "observedMax": 9
+  },
+  "biggestBuy": {
+   "leagueMean": 0.2801,
+   "withinOwnerSD": 0.0431,
+   "betweenOwnerSD": 0.0105,
+   "icc": 0.056,
+   "raw": {
+    "Aaron": 0.2856,
+    "Albex": 0.2875,
+    "Biefel": 0.2762,
+    "Dovitz": 0.2963,
+    "Evan": 0.2687,
+    "Loewy": 0.2681,
+    "Roddo": 0.2619,
+    "Rollz": 0.285,
+    "Sherman": 0.28,
+    "Stavs": 0.2812,
+    "Sug": 0.2969,
+    "Zordo": 0.2737
+   },
+   "shrunk": {
+    "Aaron": 0.2804,
+    "Albex": 0.2805,
+    "Biefel": 0.2799,
+    "Dovitz": 0.281,
+    "Evan": 0.2795,
+    "Loewy": 0.2794,
+    "Roddo": 0.2791,
+    "Rollz": 0.2804,
+    "Sherman": 0.2801,
+    "Stavs": 0.2802,
+    "Sug": 0.281,
+    "Zordo": 0.2798
+   },
+   "observedMin": 0.16,
+   "observedMax": 0.375
+  },
+  "overpayRatio": {
+   "leagueMean": 1.0056,
+   "withinOwnerSD": 0.0762,
+   "betweenOwnerSD": 0.0236,
+   "icc": 0.088,
+   "raw": {
+    "Aaron": 0.9841,
+    "Albex": 0.9791,
+    "Biefel": 1.0326,
+    "Dovitz": 0.9785,
+    "Evan": 1.0073,
+    "Loewy": 1.0099,
+    "Roddo": 1.0144,
+    "Rollz": 1.0502,
+    "Sherman": 1.0094,
+    "Stavs": 0.968,
+    "Sug": 1.029,
+    "Zordo": 1.005
+   },
+   "shrunk": {
+    "Aaron": 1.0038,
+    "Albex": 1.0033,
+    "Biefel": 1.008,
+    "Dovitz": 1.0033,
+    "Evan": 1.0058,
+    "Loewy": 1.006,
+    "Roddo": 1.0064,
+    "Rollz": 1.0096,
+    "Sherman": 1.006,
+    "Stavs": 1.0023,
+    "Sug": 1.0077,
+    "Zordo": 1.0056
+   },
+   "observedMin": 0.8,
+   "observedMax": 1.3
+  }
+ },
+ "owners": [
+  {
+   "name": "Aaron",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0615,
+     "useThis": 0.0578
+    },
+    "rbShare": {
+     "observed": 0.5153,
+     "useThis": 0.4758
+    },
+    "wrShare": {
+     "observed": 0.3414,
+     "useThis": 0.3961
+    },
+    "teShare": {
+     "observed": 0.0806,
+     "useThis": 0.0664
+    },
+    "top3Concentration": {
+     "observed": 0.5613,
+     "useThis": 0.6046
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5251,
+     "useThis": 0.5375
+    },
+    "dollarPlayers": {
+     "observed": 3.5,
+     "useThis": 4.1682
+    },
+    "biggestBuy": {
+     "observed": 0.2856,
+     "useThis": 0.2804
+    },
+    "overpayRatio": {
+     "observed": 0.9841,
+     "useThis": 1.0038
+    }
+   }
+  },
+  {
+   "name": "Albex",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0294,
+     "useThis": 0.0476
+    },
+    "rbShare": {
+     "observed": 0.5099,
+     "useThis": 0.4753
+    },
+    "wrShare": {
+     "observed": 0.3937,
+     "useThis": 0.4011
+    },
+    "teShare": {
+     "observed": 0.0595,
+     "useThis": 0.062
+    },
+    "top3Concentration": {
+     "observed": 0.5844,
+     "useThis": 0.6095
+    },
+    "shareSpentByNom40": {
+     "observed": 0.3807,
+     "useThis": 0.513
+    },
+    "dollarPlayers": {
+     "observed": 3.875,
+     "useThis": 4.2653
+    },
+    "biggestBuy": {
+     "observed": 0.2875,
+     "useThis": 0.2805
+    },
+    "overpayRatio": {
+     "observed": 0.9791,
+     "useThis": 1.0033
+    }
+   }
+  },
+  {
+   "name": "Biefel",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0307,
+     "useThis": 0.048
+    },
+    "rbShare": {
+     "observed": 0.4818,
+     "useThis": 0.473
+    },
+    "wrShare": {
+     "observed": 0.4487,
+     "useThis": 0.4062
+    },
+    "teShare": {
+     "observed": 0.032,
+     "useThis": 0.0563
+    },
+    "top3Concentration": {
+     "observed": 0.5938,
+     "useThis": 0.6115
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5265,
+     "useThis": 0.5377
+    },
+    "dollarPlayers": {
+     "observed": 3.75,
+     "useThis": 4.233
+    },
+    "biggestBuy": {
+     "observed": 0.2762,
+     "useThis": 0.2799
+    },
+    "overpayRatio": {
+     "observed": 1.0326,
+     "useThis": 1.008
+    }
+   }
+  },
+  {
+   "name": "Dovitz",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0225,
+     "useThis": 0.0454
+    },
+    "rbShare": {
+     "observed": 0.5247,
+     "useThis": 0.4765
+    },
+    "wrShare": {
+     "observed": 0.409,
+     "useThis": 0.4025
+    },
+    "teShare": {
+     "observed": 0.04,
+     "useThis": 0.058
+    },
+    "top3Concentration": {
+     "observed": 0.7044,
+     "useThis": 0.6353
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5766,
+     "useThis": 0.5462
+    },
+    "dollarPlayers": {
+     "observed": 5.625,
+     "useThis": 4.7186
+    },
+    "biggestBuy": {
+     "observed": 0.2963,
+     "useThis": 0.281
+    },
+    "overpayRatio": {
+     "observed": 0.9785,
+     "useThis": 1.0033
+    }
+   }
+  },
+  {
+   "name": "Evan",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0358,
+     "useThis": 0.0497
+    },
+    "rbShare": {
+     "observed": 0.4731,
+     "useThis": 0.4723
+    },
+    "wrShare": {
+     "observed": 0.4396,
+     "useThis": 0.4054
+    },
+    "teShare": {
+     "observed": 0.0451,
+     "useThis": 0.059
+    },
+    "top3Concentration": {
+     "observed": 0.6219,
+     "useThis": 0.6176
+    },
+    "shareSpentByNom40": {
+     "observed": 0.4884,
+     "useThis": 0.5312
+    },
+    "dollarPlayers": {
+     "observed": 5,
+     "useThis": 4.5567
+    },
+    "biggestBuy": {
+     "observed": 0.2687,
+     "useThis": 0.2795
+    },
+    "overpayRatio": {
+     "observed": 1.0073,
+     "useThis": 1.0058
+    }
+   }
+  },
+  {
+   "name": "Loewy",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0901,
+     "useThis": 0.0669
+    },
+    "rbShare": {
+     "observed": 0.4451,
+     "useThis": 0.47
+    },
+    "wrShare": {
+     "observed": 0.396,
+     "useThis": 0.4013
+    },
+    "teShare": {
+     "observed": 0.0638,
+     "useThis": 0.0629
+    },
+    "top3Concentration": {
+     "observed": 0.6269,
+     "useThis": 0.6186
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5776,
+     "useThis": 0.5464
+    },
+    "dollarPlayers": {
+     "observed": 5.375,
+     "useThis": 4.6539
+    },
+    "biggestBuy": {
+     "observed": 0.2681,
+     "useThis": 0.2794
+    },
+    "overpayRatio": {
+     "observed": 1.0099,
+     "useThis": 1.006
+    }
+   }
+  },
+  {
+   "name": "Roddo",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0813,
+     "useThis": 0.0641
+    },
+    "rbShare": {
+     "observed": 0.4012,
+     "useThis": 0.4663
+    },
+    "wrShare": {
+     "observed": 0.4631,
+     "useThis": 0.4076
+    },
+    "teShare": {
+     "observed": 0.0469,
+     "useThis": 0.0594
+    },
+    "top3Concentration": {
+     "observed": 0.5769,
+     "useThis": 0.6079
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5231,
+     "useThis": 0.5372
+    },
+    "dollarPlayers": {
+     "observed": 3.625,
+     "useThis": 4.2006
+    },
+    "biggestBuy": {
+     "observed": 0.2619,
+     "useThis": 0.2791
+    },
+    "overpayRatio": {
+     "observed": 1.0144,
+     "useThis": 1.0064
+    }
+   }
+  },
+  {
+   "name": "Rollz",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0563,
+     "useThis": 0.0562
+    },
+    "rbShare": {
+     "observed": 0.4222,
+     "useThis": 0.4681
+    },
+    "wrShare": {
+     "observed": 0.3724,
+     "useThis": 0.3991
+    },
+    "teShare": {
+     "observed": 0.1391,
+     "useThis": 0.0785
+    },
+    "top3Concentration": {
+     "observed": 0.6131,
+     "useThis": 0.6157
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5112,
+     "useThis": 0.5351
+    },
+    "dollarPlayers": {
+     "observed": 3.75,
+     "useThis": 4.233
+    },
+    "biggestBuy": {
+     "observed": 0.285,
+     "useThis": 0.2804
+    },
+    "overpayRatio": {
+     "observed": 1.0502,
+     "useThis": 1.0096
+    }
+   }
+  },
+  {
+   "name": "Sherman",
+   "seasons": 7,
+   "traits": {
+    "qbShare": {
+     "observed": 0.1043,
+     "useThis": 0.0714
+    },
+    "rbShare": {
+     "observed": 0.5107,
+     "useThis": 0.4754
+    },
+    "wrShare": {
+     "observed": 0.3236,
+     "useThis": 0.3945
+    },
+    "teShare": {
+     "observed": 0.0493,
+     "useThis": 0.0599
+    },
+    "top3Concentration": {
+     "observed": 0.6193,
+     "useThis": 0.617
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5443,
+     "useThis": 0.5407
+    },
+    "dollarPlayers": {
+     "observed": 3.5714,
+     "useThis": 4.1867
+    },
+    "biggestBuy": {
+     "observed": 0.28,
+     "useThis": 0.2801
+    },
+    "overpayRatio": {
+     "observed": 1.0094,
+     "useThis": 1.006
+    }
+   }
+  },
+  {
+   "name": "Stavs",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0471,
+     "useThis": 0.0532
+    },
+    "rbShare": {
+     "observed": 0.4361,
+     "useThis": 0.4692
+    },
+    "wrShare": {
+     "observed": 0.4105,
+     "useThis": 0.4027
+    },
+    "teShare": {
+     "observed": 0.0949,
+     "useThis": 0.0693
+    },
+    "top3Concentration": {
+     "observed": 0.605,
+     "useThis": 0.614
+    },
+    "shareSpentByNom40": {
+     "observed": 0.5534,
+     "useThis": 0.5423
+    },
+    "dollarPlayers": {
+     "observed": 3.25,
+     "useThis": 4.1035
+    },
+    "biggestBuy": {
+     "observed": 0.2812,
+     "useThis": 0.2802
+    },
+    "overpayRatio": {
+     "observed": 0.968,
+     "useThis": 1.0023
+    }
+   }
+  },
+  {
+   "name": "Sug",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0471,
+     "useThis": 0.0532
+    },
+    "rbShare": {
+     "observed": 0.4949,
+     "useThis": 0.4741
+    },
+    "wrShare": {
+     "observed": 0.406,
+     "useThis": 0.4022
+    },
+    "teShare": {
+     "observed": 0.0457,
+     "useThis": 0.0591
+    },
+    "top3Concentration": {
+     "observed": 0.6431,
+     "useThis": 0.6221
+    },
+    "shareSpentByNom40": {
+     "observed": 0.6681,
+     "useThis": 0.5618
+    },
+    "dollarPlayers": {
+     "observed": 5,
+     "useThis": 4.5567
+    },
+    "biggestBuy": {
+     "observed": 0.2969,
+     "useThis": 0.281
+    },
+    "overpayRatio": {
+     "observed": 1.029,
+     "useThis": 1.0077
+    }
+   }
+  },
+  {
+   "name": "Zordo",
+   "seasons": 8,
+   "traits": {
+    "qbShare": {
+     "observed": 0.0669,
+     "useThis": 0.0595
+    },
+    "rbShare": {
+     "observed": 0.4513,
+     "useThis": 0.4705
+    },
+    "wrShare": {
+     "observed": 0.4181,
+     "useThis": 0.4034
+    },
+    "teShare": {
+     "observed": 0.055,
+     "useThis": 0.0611
+    },
+    "top3Concentration": {
+     "observed": 0.6469,
+     "useThis": 0.6229
+    },
+    "shareSpentByNom40": {
+     "observed": 0.605,
+     "useThis": 0.5511
+    },
+    "dollarPlayers": {
+     "observed": 6.5,
+     "useThis": 4.9453
+    },
+    "biggestBuy": {
+     "observed": 0.2737,
+     "useThis": 0.2798
+    },
+    "overpayRatio": {
+     "observed": 1.005,
+     "useThis": 1.0056
+    }
+   }
+  }
+ ]
+}
