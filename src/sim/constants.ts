@@ -86,16 +86,23 @@ export const PLAN_TOP_JITTER_MIN = 0.5
 export const PLAN_TOP_JITTER_MAX = 2.0
 
 // Not from the spec's §3.4 list — this is for the bench-QB slot added
-// after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`
-// against calibration.avgRosteredByPos.QB (target 17.4/draft): bots were
-// grabbing a backup QB as often as a bench RB/WR/TE (both at
-// FLEX_OR_BENCH_NEED_FACTOR), overshooting to ~20/draft, since RB/WR/TE
-// supply is nearly exhausted by the time bench slots fill and a cheap
-// backup QB becomes the path of least resistance. A backup QB is weaker
-// value than a bench flex player in real drafts (mostly bye-week
-// insurance, not usable production), so it gets its own, lower factor.
-// 0.3 landed QB at 17.7/draft (target 17.4) across 200 drafts.
-export const BACKUP_QB_NEED_FACTOR = 0.3
+// after phase 4 shipped (see roster.ts). A backup QB is weaker value than
+// a bench flex player in real drafts (mostly bye-week insurance, not
+// usable production), so it gets its own, lower factor than
+// FLEX_OR_BENCH_NEED_FACTOR.
+//
+// Retuned 0.3 -> 0.5 in the same underspending pass as ROOM_DEMAND_MIN_
+// FACTOR above: backup-QB picks were pricing at just 0.35x blended
+// (measured directly), noticeably worse than every other position. Swept
+// 0.3-0.6 and picked 0.5 as the point where price improves substantially
+// (0.35 -> 0.57x) without moving quantity much (18.9 -> 19.6/draft) — the
+// 17.4/draft target this was originally tuned against is already
+// overshot by every value in that range, including the original 0.3, now
+// that the other underspending fixes (ROOM_DEMAND_MIN_FACTOR, the
+// BALANCED decay nudge) have shifted backup QB's appeal relative to a
+// bench RB/WR/TE. That quantity overshoot looks like a separate,
+// still-open problem, not something this factor controls much on its own.
+export const BACKUP_QB_NEED_FACTOR = 0.5
 export const LATE_DRAFT_SLOTS_THRESHOLD = 4
 export const LATE_DRAFT_MAX_BOOST = 0.25 // "up to 1.25"
 export const RICH_PER_SLOT_THRESHOLD = 8
