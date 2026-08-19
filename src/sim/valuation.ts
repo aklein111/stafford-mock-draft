@@ -11,6 +11,7 @@ import { getHistoricalDerived } from './historicalResiduals'
 import {
   BACKUP_QB_NEED_FACTOR,
   CENTERING,
+  EARLY_SPEND_RESERVE_SCALE,
   FLEX_OR_BENCH_NEED_FACTOR,
   INFLATION_DAMPING,
   LATE_DRAFT_MAX_BOOST,
@@ -18,13 +19,17 @@ import {
   LOCK_IN_MAX_BOOST,
   LOCK_IN_MIN_BOOST,
   LOCK_IN_PROBABILITY,
+  MAX_RESERVE_SCALE,
+  MIN_RESERVE_SCALE,
   NOISE_K,
+  NOMINATION_40_CHECKPOINT,
   POOR_PER_SLOT_THRESHOLD,
   RICH_PER_SLOT_BOOST,
   RICH_PER_SLOT_THRESHOLD,
   ROOM_DEMAND_MIN_FACTOR,
   UNMATCHED_YAHOO_NOISE_MULT,
 } from './constants'
+import { TRAIT_STATS } from './ownerProfiles'
 
 export function playerKey(player: Player): string {
   return `${player.name}|${player.team}`
@@ -67,7 +72,7 @@ export function buildBotValuations(
     const widthScale = traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
     const residual = 1 + (rawResidual - 1) * widthScale
 
-    const value = base * posMult * starMult * residual * traits.aggression
+    const value = base * posMult * starMult * residual * traits.overpayRatio
     values.set(playerKey(player), Math.max(0, value))
   }
   return values
@@ -178,6 +183,28 @@ export function roomDemandFactor(state: DraftState, pos: Position): number {
 
 export function isPoorPerSlot(team: Team): boolean {
   return dollarsPerSlot(team) < POOR_PER_SLOT_THRESHOLD
+}
+
+// BOT_PERSONALITIES.md's shareSpentByNom40: "how eagerly it spends early;
+// feeds the budget reserve." The trait is measured against nomination 40
+// in the source data's own 168-pick season (leagueHistory.rawPicks) — a
+// checkpoint that only means something *before* it's passed, so this is a
+// no-op past it, not a permanent tilt. Before the checkpoint, a bot whose
+// drawn value sits above the league mean (spends more of its budget early
+// than average, historically) gets its computePlannedMaxBid reserve
+// scaled down — less held back, more usable on the pick in front of it
+// right now; a patient bot gets the reserve scaled up. Clamped to a
+// narrow band around 1 — this is a tilt on Fix 2a's reserve, not a
+// replacement for it.
+export function earlySpendReserveScale(state: DraftState, shareSpentByNom40: number): number {
+  const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
+  if (totalSlots <= 0) return 1
+  const checkpointProgress = Math.min(1, NOMINATION_40_CHECKPOINT / totalSlots)
+  if (state.pickNumber / totalSlots > checkpointProgress) return 1
+
+  const deviation = shareSpentByNom40 - TRAIT_STATS.shareSpentByNom40.leagueMean
+  const scale = 1 - EARLY_SPEND_RESERVE_SCALE * deviation
+  return Math.min(MAX_RESERVE_SCALE, Math.max(MIN_RESERVE_SCALE, scale))
 }
 
 // §3.5 — occasional irrationality: ~8% chance per player a bot gets

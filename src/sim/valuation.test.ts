@@ -36,7 +36,7 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
 }
 
 const neutralTraits: BotTraits = {
-  aggression: 1,
+  overpayRatio: 1,
   positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 },
   starPreference: 0,
   disciplineDecay: 1,
@@ -131,7 +131,7 @@ describe('buildBotValuations (spec §3.2, adjusted per RAW_DATA_ADDENDUM.md Meth
   })
 
   it('never returns a negative valuation', () => {
-    const traits: BotTraits = { ...neutralTraits, aggression: -1 } // absurd on purpose, just to force a negative raw value
+    const traits: BotTraits = { ...neutralTraits, overpayRatio: -1 } // absurd on purpose, just to force a negative raw value
     const values = buildBotValuations([makePlayer({ blended: 40 })], traits, zeroNoiseRng(), noResidualPool)
     expect([...values.values()][0]).toBeGreaterThanOrEqual(0)
   })

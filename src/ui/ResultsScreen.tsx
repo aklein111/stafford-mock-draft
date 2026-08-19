@@ -1,6 +1,4 @@
 import type { DraftController } from './useDraftController'
-import { ARCHETYPE_LABELS } from '../sim/botTraits'
-import { BUDGET_PLAN_LABELS } from '../sim/budgetPlan'
 import type { Position } from '../sim/types'
 
 const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE', 'DEF']
@@ -104,7 +102,7 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
           {state.teams.map((team) => (
             <div key={team.id} style={{ background: '#161a22', borderRadius: '6px', padding: '0.75rem' }}>
               <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
-                {team.id === humanTeam.id && team.name !== 'You' ? `${team.name} (you)` : team.name} — ${team.spent}
+                {team.id === humanTeam.id ? `${team.name} (you)` : team.name} — ${team.spent}
               </div>
               {team.slots.map((slot, i) => (
                 <div className="slot-row" key={i}>
@@ -119,19 +117,24 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
 
       <section>
         <h2>Who you were actually up against</h2>
+        <p style={{ color: '#9ca3af', marginTop: 0, fontSize: '0.85rem' }}>
+          Real Stafford managers, redrawn this draft around their own historical tendencies — see BOT_PERSONALITIES.md.
+          These numbers weren't shown to you during the draft.
+        </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
           {botStates.map((bot) => {
             const team = state.teams.find((t) => t.id === bot.teamId)!
+            const d = bot.drawnTraits
             return (
               <div key={bot.teamId} style={{ background: '#161a22', borderRadius: '6px', padding: '0.75rem' }}>
                 <div style={{ fontWeight: 600 }}>{team.name}</div>
                 <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  {ARCHETYPE_LABELS[bot.archetype]} · {BUDGET_PLAN_LABELS[bot.budgetPlanArchetype]}
+                  QB {(d.qbShare * 100).toFixed(0)}% · RB {(d.rbShare * 100).toFixed(0)}% · WR {(d.wrShare * 100).toFixed(0)}% · TE{' '}
+                  {(d.teShare * 100).toFixed(0)}% of budget
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#9ca3af' }}>
-                  aggression {bot.traits.aggression.toFixed(2)} · restraint {bot.traits.restraint.toFixed(2)} · star
-                  pref {bot.traits.starPreference.toFixed(2)} · discipline decay{' '}
-                  {bot.traits.disciplineDecay.toFixed(2)} · noise {bot.traits.noiseScale.toFixed(2)}
+                  top-3 concentration {(d.top3Concentration * 100).toFixed(0)}% · biggest buy ${(d.biggestBuy * team.budget).toFixed(0)} ·{' '}
+                  {(d.dollarPlayers).toFixed(1)} $1-2 slots · overpay {d.overpayRatio.toFixed(2)}x
                 </div>
               </div>
             )

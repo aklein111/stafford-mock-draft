@@ -5,6 +5,7 @@ import { createTeam } from './roster'
 import { createRealBotMaxBidFn, type BotState } from './bots'
 import type { Player } from './types'
 import type { BotTraits } from './botTraits'
+import type { DrawnOwnerTraits } from './ownerProfiles'
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -25,7 +26,7 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
 }
 
 const neutralTraits: BotTraits = {
-  aggression: 1,
+  overpayRatio: 1,
   positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 },
   starPreference: 0,
   disciplineDecay: 1,
@@ -33,13 +34,25 @@ const neutralTraits: BotTraits = {
   restraint: 1,
 }
 
+const neutralDrawnTraits: DrawnOwnerTraits = {
+  qbShare: 0.06,
+  rbShare: 0.47,
+  wrShare: 0.4,
+  teShare: 0.06,
+  top3Concentration: 0.6,
+  shareSpentByNom40: 0.54,
+  dollarPlayers: 4,
+  biggestBuy: 0.28,
+  overpayRatio: 1,
+}
+
 function makeBotState(overrides: Partial<BotState> = {}): BotState {
   return {
     teamId: 1,
-    archetype: 'NEUTRAL',
+    name: 'TestBot',
+    drawnTraits: neutralDrawnTraits,
     traits: neutralTraits,
     valuations: new Map(),
-    budgetPlanArchetype: 'BALANCED',
     budgetPlan: new Array(14).fill(200 / 14),
     ...overrides,
   }

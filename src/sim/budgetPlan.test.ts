@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mulberry32 } from './rng'
 import { createTeam, assignPlayer } from './roster'
 import type { Player } from './types'
-import { assignBudgetPlanArchetypes, computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
+import type { DrawnOwnerTraits } from './ownerProfiles'
+import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -22,30 +22,26 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
   }
 }
 
-describe('assignBudgetPlanArchetypes (REVISIONS.md Fix 2a)', () => {
-  it('assigns exactly one stars-and-scrubs, one even-spread, rest balanced', () => {
-    const archetypes = assignBudgetPlanArchetypes(11, mulberry32(1))
-    const counts = archetypes.reduce<Record<string, number>>((acc, a) => {
-      acc[a] = (acc[a] ?? 0) + 1
-      return acc
-    }, {})
-    expect(counts.STARS_AND_SCRUBS).toBe(1)
-    expect(counts.EVEN_SPREAD).toBe(1)
-    expect(counts.BALANCED).toBe(9)
-  })
+function makeDrawn(overrides: Partial<DrawnOwnerTraits> = {}): DrawnOwnerTraits {
+  return {
+    qbShare: 0.06,
+    rbShare: 0.47,
+    wrShare: 0.4,
+    teShare: 0.06,
+    top3Concentration: 0.6164, // league mean
+    shareSpentByNom40: 0.54,
+    dollarPlayers: 4,
+    biggestBuy: 0.28,
+    overpayRatio: 1,
+    ...overrides,
+  }
+}
 
-  it('is deterministic for a given seed', () => {
-    const a = assignBudgetPlanArchetypes(11, mulberry32(7))
-    const b = assignBudgetPlanArchetypes(11, mulberry32(7))
-    expect(a).toEqual(b)
-  })
-})
-
-describe('generateBudgetPlan (REVISIONS.md Fix 2a)', () => {
+describe('generateBudgetPlan (REVISIONS.md Fix 2a, BOT_PERSONALITIES.md)', () => {
   it('always sums to exactly the total budget, with every slot at least $1', () => {
-    for (const archetype of ['STARS_AND_SCRUBS', 'BALANCED', 'EVEN_SPREAD'] as const) {
-      for (const seed of [1, 2, 3, 4, 5]) {
-        const plan = generateBudgetPlan(archetype, 200, 9, 5, mulberry32(seed))
+    for (const top3 of [0.42, 0.6164, 0.8]) {
+      for (const biggestBuy of [0.16, 0.28, 0.37]) {
+        const plan = generateBudgetPlan(makeDrawn({ top3Concentration: top3, biggestBuy }), 200, 9, 5)
         expect(plan).toHaveLength(14)
         expect(plan.reduce((a, b) => a + b, 0)).toBe(200)
         for (const share of plan) expect(share).toBeGreaterThanOrEqual(1)
@@ -54,40 +50,39 @@ describe('generateBudgetPlan (REVISIONS.md Fix 2a)', () => {
   })
 
   it('is sorted biggest-first, not tied to any slot or position', () => {
-    for (const seed of [1, 2, 3, 4, 5]) {
-      const plan = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(seed))
-      for (let i = 1; i < plan.length; i++) {
-        expect(plan[i]).toBeLessThanOrEqual(plan[i - 1])
-      }
+    const plan = generateBudgetPlan(makeDrawn({ top3Concentration: 0.8 }), 200, 9, 5)
+    for (let i = 1; i < plan.length; i++) {
+      expect(plan[i]).toBeLessThanOrEqual(plan[i - 1])
     }
   })
 
-  it('stars-and-scrubs concentrates far more than even-spread', () => {
-    const stars = generateBudgetPlan('STARS_AND_SCRUBS', 200, 9, 5, mulberry32(1))
-    const even = generateBudgetPlan('EVEN_SPREAD', 200, 9, 5, mulberry32(1))
-    const spread = (plan: number[]) => Math.max(...plan) - Math.min(...plan)
-    expect(spread(stars)).toBeGreaterThan(spread(even))
-    // Even-spread should land close to a flat 200/14 ~ 14.3 per slot.
-    for (const share of even) expect(share).toBeGreaterThan(10)
+  it('a higher drawn top3Concentration produces a plan with a larger top-3 share than a lower one', () => {
+    // setTopSlot pins slot 1 to the drawn biggestBuy regardless of decay,
+    // so check the top3Concentration signal where it actually shows up:
+    // ranks 2-3, driven by the decay curve underneath the override.
+    const top3Share = (plan: number[]) => plan.slice(0, 3).reduce((a, b) => a + b, 0) / plan.reduce((a, b) => a + b, 0)
+    const concentrated = generateBudgetPlan(makeDrawn({ top3Concentration: 0.8 }), 200, 9, 5)
+    const spread = generateBudgetPlan(makeDrawn({ top3Concentration: 0.42 }), 200, 9, 5)
+    expect(top3Share(concentrated)).toBeGreaterThan(top3Share(spread))
   })
 
-  it('is deterministic for a given seed', () => {
-    const a = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(9))
-    const b = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(9))
+  it('the top slot tracks the drawn biggestBuy fraction of total budget', () => {
+    const low = generateBudgetPlan(makeDrawn({ biggestBuy: 0.16 }), 200, 9, 5)
+    const high = generateBudgetPlan(makeDrawn({ biggestBuy: 0.37 }), 200, 9, 5)
+    expect(high[0]).toBeGreaterThan(low[0])
+    expect(high[0]).toBeCloseTo(0.37 * 200, -1) // within a few dollars of the rounded/rescaled target
+  })
+
+  it('the smallest dollarPlayers entries land at the $1 floor', () => {
+    const plan = generateBudgetPlan(makeDrawn({ dollarPlayers: 5 }), 200, 9, 5)
+    const cheapest = [...plan].sort((a, b) => a - b).slice(0, 5)
+    for (const v of cheapest) expect(v).toBe(1)
+  })
+
+  it('is deterministic for the same drawn traits — all its variance now comes from the upstream owner draw', () => {
+    const a = generateBudgetPlan(makeDrawn(), 200, 9, 5)
+    const b = generateBudgetPlan(makeDrawn(), 200, 9, 5)
     expect(a).toEqual(b)
-  })
-
-  it('the top slot varies draft to draft (REVISIONS.md Change 3, step 5)', () => {
-    // Without per-draft variance in the ceiling, an archetype's best-pick
-    // room is identical every draft, which is what made elite players
-    // land below blended in 88%+ of simulations even after the ceiling's
-    // average level was raised.
-    const topValues = new Set<number>()
-    for (let seed = 0; seed < 20; seed++) {
-      const plan = generateBudgetPlan('BALANCED', 200, 9, 5, mulberry32(seed))
-      topValues.add(plan[0])
-    }
-    expect(topValues.size).toBeGreaterThan(1)
   })
 })
 
@@ -146,5 +141,18 @@ describe('computePlannedMaxBid (REVISIONS.md Fix 2a)', () => {
     const team = createTeam(1, 'A', 200, ['WR'], 0)
     const plan = [200]
     expect(computePlannedMaxBid(team, makePlayer({ pos: 'RB' }), plan)).toBe(0)
+  })
+
+  it('reserveScale scales the reserve, not the current-bid slot (BOT_PERSONALITIES.md shareSpentByNom40)', () => {
+    const team = createTeam(1, 'A', 200, ['RB', 'WR', 'TE'], 0)
+    const plan = [100, 60, 40]
+    const neutral = computePlannedMaxBid(team, makePlayer({ pos: 'RB' }), plan)
+    const eager = computePlannedMaxBid(team, makePlayer({ pos: 'RB' }), plan, 0.5) // half the reserve held back
+    const patient = computePlannedMaxBid(team, makePlayer({ pos: 'RB' }), plan, 1.5) // more held back
+    expect(neutral).toBe(200 - 0 - 100) // reserve = 60+40
+    expect(eager).toBe(200 - 0 - 50) // reserve halved
+    expect(patient).toBe(200 - 0 - 150) // reserve 1.5x
+    expect(eager).toBeGreaterThan(neutral)
+    expect(patient).toBeLessThan(neutral)
   })
 })

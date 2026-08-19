@@ -1,7 +1,6 @@
 // REVISIONS.md Fix 2a — a per-bot spending plan, drawn once at draft
-// start (same "hidden until the reveal" treatment as botTraits.ts's
-// personalities), that replaces the bare $1-per-remaining-slot legality
-// rule as the *strategic* ceiling a bot actually bids to.
+// start, that replaces the bare $1-per-remaining-slot legality rule as
+// the *strategic* ceiling a bot actually bids to.
 //
 // The old rule (still enforced by roster.ts's legalMaxBid, for every
 // bidder including a human) is a floor that only guarantees a draft can
@@ -11,67 +10,21 @@
 // bad early purchase eats into that plan rather than being absorbed by
 // bottomless room elsewhere. That planning is what actually produces
 // realistic top-of-the-pool restraint.
+//
+// BOT_PERSONALITIES.md: the plan is generated directly from that bot's
+// per-draft owner-trait draw rather than picked from a fixed
+// stars-and-scrubs/balanced/even-spread menu — top3Concentration sets how
+// front-loaded the curve is, biggestBuy sets the single top slot's dollar
+// target, and dollarPlayers sets how many of the smallest slots plan to
+// go for near nothing. All three are real per-owner numbers, redrawn
+// every draft, so the plan's shape is honest variance rather than a
+// caricature picked from a menu.
 
-import { PLAN_TOP_JITTER_MAX, PLAN_TOP_JITTER_MIN } from './constants'
-import type { RNG } from './rng'
-import { openSlots, pickSlotFor, type Team } from './roster'
+import { pickSlotFor, openSlots, type Team } from './roster'
+import type { DrawnOwnerTraits } from './ownerProfiles'
 import type { Player } from './types'
 
-export type BudgetPlanArchetype = 'STARS_AND_SCRUBS' | 'BALANCED' | 'EVEN_SPREAD'
-
-export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
-  STARS_AND_SCRUBS: 'Stars and scrubs',
-  BALANCED: 'Balanced budget',
-  EVEN_SPREAD: 'Spreads it evenly',
-}
-
-// Lower decay = steeper drop-off from the plan's biggest slot to its
-// smallest (stars-and-scrubs); close to 1 = nearly flat (spreads evenly).
-// BALANCED is the default for most of the room, per REVISIONS.md: "one
-// stars-and-scrubs plan, a couple balanced, one that spreads evenly."
-//
-// BALANCED's value was re-tuned in step 5: the original 0.78 gave its top
-// slot only ~$45 of $200. Since the winning price on an elite player is
-// roughly the *second*-highest capped bid in the room, and only one bot
-// (STARS_AND_SCRUBS) had real room above ~$45, elite players were clearing
-// reliably below their true value — measured directly, e.g. the pool's
-// single best player landing below `blended` in 97%+ of simulations
-// (checkVariance.ts). Steepening BALANCED gives the other ten bots a real
-// top slot too (~$46 at 0.77, before jitterTopSlot's per-draft swing), so
-// there's genuine competitive depth near the top instead of just one bot
-// with room to spend. Re-tuned (alongside jitterTopSlot below) against
-// both calibrate.ts, so this doesn't re-break the step 4 shape targets,
-// and checkVariance.ts, so elite players stop being one-sided.
-//
-// Nudged 0.77 -> 0.80 in a later underspending pass: ~20% of all RB/WR bid
-// evaluations were actively capped by computePlannedMaxBid, and 0.77's
-// curve left the *non-splurge* slots (positions 3-14, which is most of a
-// BALANCED bot's roster) thinner than the players actually landing there
-// were worth. A small flattening thickens that tail without materially
-// undoing the top-slot fix above — re-verified against checkVariance.ts's
-// elite-player check afterward (still not one-sided) before keeping it.
-const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
-  STARS_AND_SCRUBS: 0.55,
-  BALANCED: 0.80,
-  EVEN_SPREAD: 0.97,
-}
-
 const MIN_PLAN_PER_SLOT = 1 // matches the $1 real-money minimum bid
-
-// Assigns one budget-plan archetype per bot: one stars-and-scrubs, one
-// even-spread, and everyone else balanced — shuffled so it isn't always
-// the same team ids, same pattern as botTraits.ts's assignArchetypes.
-export function assignBudgetPlanArchetypes(count: number, rng: RNG): BudgetPlanArchetype[] {
-  const named: BudgetPlanArchetype[] = ['STARS_AND_SCRUBS', 'EVEN_SPREAD']
-  const archetypes: BudgetPlanArchetype[] = named.slice(0, count)
-  while (archetypes.length < count) archetypes.push('BALANCED')
-
-  for (let i = archetypes.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[archetypes[i], archetypes[j]] = [archetypes[j], archetypes[i]]
-  }
-  return archetypes
-}
 
 // A geometric decay curve, biggest entry first, scaled to sum exactly to
 // `total` with every entry at least MIN_PLAN_PER_SLOT. Always returned
@@ -96,36 +49,86 @@ function decayCurve(count: number, decay: number, total: number): number[] {
   return rounded.sort((a, b) => b - a)
 }
 
-// Re-randomizes a plan's single biggest entry within
-// [PLAN_TOP_JITTER_MIN, PLAN_TOP_JITTER_MAX] of its base value, then
-// rescales every other entry so the plan still sums to exactly the same
-// total (same rounding/remainder approach as decayCurve, and re-sorted
+// What fraction of `total` a decayCurve(count, decay, total) puts on its
+// top 3 entries — the un-rounded version, so decayForTop3Share can
+// binary-search it. Strictly decreasing in decay: decay -> 0 puts
+// everything on entry 1 (top3Share -> 1); decay -> 1 is flat (top3Share ->
+// 3/count).
+function top3ShareForDecay(count: number, decay: number): number {
+  let sum = 0
+  let top3 = 0
+  let w = 1
+  for (let i = 0; i < count; i++) {
+    sum += w
+    if (i < 3) top3 += w
+    w *= decay
+  }
+  return sum > 0 ? top3 / sum : 0
+}
+
+// Inverts top3ShareForDecay: what decay produces a curve whose top 3
+// entries hold this owner's drawn top3Concentration share of the total
+// budget. observedMin for top3Concentration (0.415) is comfortably above
+// the flattest possible share (3/14 ~ 0.214), so the target is always
+// reachable inside (0, 1) — no need to handle an out-of-range target.
+function decayForTop3Share(count: number, targetShare: number): number {
+  let lo = 0.001
+  let hi = 0.999
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    if (top3ShareForDecay(count, mid) > targetShare) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
+// Overrides a sorted-descending plan's biggest entry with an explicit
+// target, then rescales every other entry so the plan still sums to the
+// same total (same rounding/remainder approach as decayCurve), re-sorted
 // descending afterward so computePlannedMaxBid's sorted-biggest-first
-// invariant holds regardless of how the jitter landed).
-//
-// REVISIONS.md Change 3, step 5: without this, a bot archetype's ceiling
-// for its best pick is an identical fixed number every single draft (the
-// decay curve is pure math, no randomness), so an elite player's price
-// hugs that fixed ceiling every time — measured directly, the pool's best
-// few players still landed below blended 88%+ of the time even after
-// raising the ceiling's average level, well past REVISIONS' 80%
-// one-sidedness bar. This makes which bots have real room to compete for
-// the best players on the board vary draft to draft, the way it would for
-// real managers walking in with different plans each time.
-function jitterTopSlot(plan: number[], rng: RNG): number[] {
+// invariant holds regardless of how the override landed relative to the
+// original curve.
+function setTopSlot(plan: number[], target: number): number[] {
   if (plan.length === 0) return plan
   const total = plan.reduce((a, b) => a + b, 0)
-  const factor = PLAN_TOP_JITTER_MIN + rng() * (PLAN_TOP_JITTER_MAX - PLAN_TOP_JITTER_MIN)
   const maxTop = total - MIN_PLAN_PER_SLOT * (plan.length - 1)
-  const jitteredTop = Math.min(maxTop, Math.max(MIN_PLAN_PER_SLOT, Math.round(plan[0] * factor)))
+  const top = Math.min(maxTop, Math.max(MIN_PLAN_PER_SLOT, Math.round(target)))
 
   const rest = plan.slice(1)
-  const restTarget = total - jitteredTop
+  const restTarget = total - top
   const restSum = rest.reduce((a, b) => a + b, 0)
-  const rescaledRest =
-    restSum > 0 ? rest.map((v) => Math.max(MIN_PLAN_PER_SLOT, Math.round((v / restSum) * restTarget))) : rest
+  const rescaledRest = restSum > 0 ? rest.map((v) => Math.max(MIN_PLAN_PER_SLOT, Math.round((v / restSum) * restTarget))) : rest
 
-  const combined = [jitteredTop, ...rescaledRest]
+  const combined = [top, ...rescaledRest]
+  const diff = total - combined.reduce((a, b) => a + b, 0)
+  if (diff !== 0) {
+    const maxIdx = combined.indexOf(Math.max(...combined))
+    combined[maxIdx] += diff
+  }
+  return combined.sort((a, b) => b - a)
+}
+
+// Forces the smallest `count` entries of a sorted-descending plan down to
+// MIN_PLAN_PER_SLOT (BOT_PERSONALITIES.md's dollarPlayers: "how many
+// slots it plans to fill at $1-2"), and redistributes what that frees up
+// proportionally across the remaining entries so the total is unchanged.
+function floorCheapestSlots(plan: number[], count: number): number[] {
+  const n = plan.length
+  const floorCount = Math.max(0, Math.min(n - 1, Math.round(count)))
+  if (floorCount === 0) return plan
+
+  const total = plan.reduce((a, b) => a + b, 0)
+  const keepCount = n - floorCount
+  const cheapest = plan.slice(keepCount)
+  const reclaimed = cheapest.reduce((a, b) => a + b, 0) - floorCount * MIN_PLAN_PER_SLOT
+  const floored = new Array(floorCount).fill(MIN_PLAN_PER_SLOT)
+
+  const kept = plan.slice(0, keepCount)
+  const keptSum = kept.reduce((a, b) => a + b, 0)
+  const rescaledKept =
+    keptSum > 0 ? kept.map((v) => Math.max(MIN_PLAN_PER_SLOT, Math.round(v + (v / keptSum) * reclaimed))) : kept
+
+  const combined = [...rescaledKept, ...floored]
   const diff = total - combined.reduce((a, b) => a + b, 0)
   if (diff !== 0) {
     const maxIdx = combined.indexOf(Math.max(...combined))
@@ -135,23 +138,15 @@ function jitterTopSlot(plan: number[], rng: RNG): number[] {
 }
 
 // Builds a plan of dollar targets, one per roster spot, sorted biggest
-// first — deliberately *not* tied to a specific slot or position. An
-// earlier version assigned the curve to team.slots by index (with the
-// starter portion shuffled so it wasn't always the same position), which
-// meant a stars-and-scrubs bot's single big "splurge" number was pinned to
-// whichever position it happened to land on at draft start — almost never
-// the position of whichever player later turned out to be the one worth
-// splurging on. See computePlannedMaxBid for how the plan is now applied
-// to whichever slot the bot actually wants to spend big on.
-export function generateBudgetPlan(
-  archetype: BudgetPlanArchetype,
-  totalBudget: number,
-  starterCount: number,
-  benchCount: number,
-  rng: RNG,
-): number[] {
-  const base = decayCurve(starterCount + benchCount, DECAY_BY_ARCHETYPE[archetype], totalBudget)
-  return jitterTopSlot(base, rng)
+// first — deliberately *not* tied to a specific slot or position (see
+// computePlannedMaxBid for how it's applied to whichever slot the bot
+// actually wants to spend big on, regardless of position).
+export function generateBudgetPlan(drawn: DrawnOwnerTraits, totalBudget: number, starterCount: number, benchCount: number): number[] {
+  const slots = starterCount + benchCount
+  const decay = decayForTop3Share(slots, drawn.top3Concentration)
+  const base = decayCurve(slots, decay, totalBudget)
+  const withBiggestBuy = setTopSlot(base, drawn.biggestBuy * totalBudget)
+  return floorCheapestSlots(withBiggestBuy, drawn.dollarPlayers)
 }
 
 // The reserve-based cap (Fix 2a): how much of a team's remaining budget is
@@ -165,19 +160,21 @@ export function generateBudgetPlan(
 // only on how many slots have filled, not which positions they were. Sized
 // off budgetPlan.length itself (not team.slots.length) so a plan is always
 // self-consistent even if it doesn't cover every one of the team's slots.
-// That's what lets a stars-and-scrubs bot's splurge money follow whichever
-// player it actually decides is worth it, instead of a position it
-// pre-committed to before the draft even started. The current bid can
-// reach for the single biggest of what remains; the rest stays reserved
-// for every other open slot. A team that overspends its plan on one slot
-// automatically has less room for the rest without needing to explicitly
-// shrink the plan itself.
-export function computePlannedMaxBid(team: Team, player: Player, budgetPlan: number[]): number {
+// The current bid can reach for the single biggest of what remains; the
+// rest stays reserved for every other open slot. A team that overspends
+// its plan on one slot automatically has less room for the rest without
+// needing to explicitly shrink the plan itself.
+//
+// reserveScale (default 1, no adjustment) lets a caller lean on the
+// reserve directly — BOT_PERSONALITIES.md's shareSpentByNom40 uses this to
+// make an early-spending bot's reserve smaller (more usable right now)
+// before the draft reaches its measured checkpoint (see bots.ts).
+export function computePlannedMaxBid(team: Team, player: Player, budgetPlan: number[], reserveScale: number = 1): number {
   const slot = pickSlotFor(team, player.pos)
   if (!slot) return 0
 
   const openCount = openSlots(team).length
   const available = budgetPlan.slice(Math.max(0, budgetPlan.length - openCount))
-  const reserve = available.slice(1).reduce((a, b) => a + b, 0)
+  const reserve = available.slice(1).reduce((a, b) => a + b, 0) * reserveScale
   return team.budget - team.spent - reserve
 }

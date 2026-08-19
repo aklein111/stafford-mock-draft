@@ -2,12 +2,15 @@ import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
 import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
-import { generateBotPersonalities, type Archetype, type BotTraits } from './botTraits'
-import { assignBudgetPlanArchetypes, computePlannedMaxBid, generateBudgetPlan, type BudgetPlanArchetype } from './budgetPlan'
+import { DEF_MAX_BID } from './constants'
+import { traitsFromOwnerDraw, type BotTraits } from './botTraits'
+import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 import { getHistoricalDerived } from './historicalResiduals'
+import { BOT_OWNERS, drawOwnerTraits, type DrawnOwnerTraits } from './ownerProfiles'
 import {
   buildBotValuations,
   computeInflation,
+  earlySpendReserveScale,
   inflationFactor,
   isPoorPerSlot,
   needFactor,
@@ -36,41 +39,46 @@ export const trivialDollarBot: MaxBidFn = (_state, team, player) => {
 
 export interface BotState {
   teamId: number
-  archetype: Archetype
+  // BOT_PERSONALITIES.md: the real manager this bot is standing in for —
+  // "label the bots with the real names."
+  name: string
+  // This draft's raw trait draw (ownerProfiles.ts), kept alongside the
+  // derived BotTraits below so the results screen can reveal exactly what
+  // this bot was playing this particular draft (not shown during the
+  // draft itself).
+  drawnTraits: DrawnOwnerTraits
   traits: BotTraits
   valuations: Map<string, number>
-  budgetPlanArchetype: BudgetPlanArchetype
   budgetPlan: number[]
 }
 
-// Builds one persistent bot per team id (spec §3.1-§3.2, plus REVISIONS.md
-// Fix 2a's budget plan): a personality, a private valuation for every
-// player, and a planned per-slot spending target, all drawn once at draft
-// start and kept for the whole draft. noiseK/centering pass straight
-// through to buildBotValuations — see there for what overriding them does.
-// The archetype labels are kept alongside for the post-draft personality
-// reveal (spec §5) — never surfaced in the UI before the draft ends.
-export function createBotStates(
-  teamIds: number[],
-  data: DraftData,
-  rng: RNG,
-  noiseK?: number,
-  centering?: number,
-): BotState[] {
-  const personalities = generateBotPersonalities(teamIds.length, rng)
-  const budgetPlanArchetypes = assignBudgetPlanArchetypes(teamIds.length, rng)
+// Builds one persistent bot per team id: BOT_PERSONALITIES.md's per-draft
+// owner trait draw, the derived behavioural traits, a private valuation
+// for every player, and a planned per-slot spending target, all drawn once
+// at draft start and kept for the whole draft. noiseK/centering pass
+// straight through to buildBotValuations — see there for what overriding
+// them does. Bots cycle through the eleven real owners in file order; a
+// headless all-bot draft (calibrate.ts, checkVariance.ts) has a 12th seat
+// with no human, so it wraps around and reuses the first owner — harmless
+// since those runs never display a name.
+export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, noiseK?: number, centering?: number): BotState[] {
   const starterCount = data.meta.starters.length
   const benchCount = data.meta.bench
   const residualPool = getHistoricalDerived(data).residualPool
 
-  return teamIds.map((teamId, i) => ({
-    teamId,
-    archetype: personalities[i].archetype,
-    traits: personalities[i].traits,
-    valuations: buildBotValuations(data.currentPlayers, personalities[i].traits, rng, residualPool, noiseK, centering),
-    budgetPlanArchetype: budgetPlanArchetypes[i],
-    budgetPlan: generateBudgetPlan(budgetPlanArchetypes[i], data.meta.budget, starterCount, benchCount, rng),
-  }))
+  return teamIds.map((teamId, i) => {
+    const owner = BOT_OWNERS[i % BOT_OWNERS.length]
+    const drawnTraits = drawOwnerTraits(owner, rng)
+    const traits = traitsFromOwnerDraw(drawnTraits, rng)
+    return {
+      teamId,
+      name: owner.name,
+      drawnTraits,
+      traits,
+      valuations: buildBotValuations(data.currentPlayers, traits, rng, residualPool, noiseK, centering),
+      budgetPlan: generateBudgetPlan(drawnTraits, data.meta.budget, starterCount, benchCount),
+    }
+  })
 }
 
 // The full maxBid function (spec §3.3, adjusted per REVISIONS.md Fixes
@@ -82,11 +90,14 @@ export function createBotStates(
 // inflation, and a per-player roll for "locked in" irrationality — scaled
 // down by the bot's restraint (Fix 2b: a real manager sets a number and
 // stops, rather than pushing to the edge of what it can technically
-// afford) — then capped at what the bot's own budget plan has reserved for
-// every other slot it still needs to fill (Fix 2a). The engine separately
-// enforces the hard legal-max-bid floor on top of all of this, so neither
-// this function nor its caller needs to worry about a team going
-// roster-incomplete.
+// afford) — DEF is hard-capped at DEF_MAX_BID regardless of how that chain
+// stacks up, since a real manager streams defenses rather than paying a
+// premium for one — then capped at what the bot's own budget plan has
+// reserved for every other slot it still needs to fill (Fix 2a), itself
+// tilted by this bot's drawn early-spending eagerness
+// (BOT_PERSONALITIES.md). The engine separately enforces the hard
+// legal-max-bid floor on top of all of this, so neither this function nor
+// its caller needs to worry about a team going roster-incomplete.
 // backupQbFactor passes straight through to needFactor.
 export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
@@ -103,9 +114,11 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const lockIn = rollLockIn(state.rng)
 
     let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * bot.traits.restraint
+    if (player.pos === 'DEF') maxBid = Math.min(maxBid, DEF_MAX_BID)
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
-    const plannedCap = computePlannedMaxBid(team, player, bot.budgetPlan)
+    const reserveScale = earlySpendReserveScale(state, bot.drawnTraits.shareSpentByNom40)
+    const plannedCap = computePlannedMaxBid(team, player, bot.budgetPlan, reserveScale)
     maxBid = Math.min(maxBid, plannedCap)
 
     return Math.max(0, Math.round(maxBid))
