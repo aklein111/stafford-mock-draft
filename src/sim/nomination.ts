@@ -4,7 +4,7 @@ import type { Player } from './types'
 import type { RNG } from './rng'
 import type { BotState } from './bots'
 import { playerKey } from './valuation'
-import { NOMINATION_STRATEGY_WEIGHTS } from './constants'
+import { NOMINATION_STRATEGY_WEIGHTS, NOMINATION_VALUE_EXPONENT } from './constants'
 
 export type NominationStrategy = (state: DraftState, nominator: Team) => Player | null
 
@@ -63,11 +63,12 @@ function weightedPick(candidates: Player[], weight: (p: Player) => number, rng: 
 }
 
 // §3.7 — a bot's turn to nominate. Mixes four strategies: budget drain
-// (45%), value grab (30%), need fill (15%), random (10%). Because
-// budget-drain and value-grab both skew toward expensive players early
-// (there's more of them left, and they're the ones worth draining money
-// on or grabbing), the mix naturally skews early nominations toward
-// high-`blended` players without needing to force it separately.
+// (45%), value grab (30%), need fill (15%), random (10%). Budget-drain and
+// value-grab both weight candidates by value, which skews early
+// nominations toward high-`blended` players without needing to force it
+// separately as a *direction* — but raising that weight to
+// NOMINATION_VALUE_EXPONENT is what makes the skew strong enough to match
+// how front-loaded real nominations actually are (see constants.ts).
 export function createBotNominationStrategy(botStates: BotState[]): NominationStrategy {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
 
@@ -85,7 +86,7 @@ export function createBotNominationStrategy(botStates: BotState[]): NominationSt
     if (roll < budgetDrain) {
       const cantUse = pool.filter((p) => !canBidOnPosition(nominator, p.pos))
       const candidates = cantUse.length > 0 ? cantUse : pool
-      return weightedPick(candidates, (p) => p.blended, rng)
+      return weightedPick(candidates, (p) => p.blended ** NOMINATION_VALUE_EXPONENT, rng)
     }
 
     // Value grab: put up someone we actually want, but only when we're
@@ -94,9 +95,9 @@ export function createBotNominationStrategy(botStates: BotState[]): NominationSt
       if (bot && dollarsPerSlot(nominator) > averageDollarsPerSlot(state.teams)) {
         const wanted = pool.filter((p) => canBidOnPosition(nominator, p.pos))
         const candidates = wanted.length > 0 ? wanted : pool
-        return weightedPick(candidates, (p) => bot.valuations.get(playerKey(p)) ?? p.blended, rng)
+        return weightedPick(candidates, (p) => (bot.valuations.get(playerKey(p)) ?? p.blended) ** NOMINATION_VALUE_EXPONENT, rng)
       }
-      return weightedPick(pool, (p) => p.blended, rng)
+      return weightedPick(pool, (p) => p.blended ** NOMINATION_VALUE_EXPONENT, rng)
     }
 
     // Need fill: nominate to plug one of our own open starting slots.

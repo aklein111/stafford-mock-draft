@@ -133,6 +133,29 @@ export const NOMINATION_STRATEGY_WEIGHTS = {
   random: 0.1,
 }
 
+// Added after a user report that late-nominated players were going for far
+// under projection: nomination.ts's budget-drain and value-grab strategies
+// already weighted candidates by value (linearly, exponent 1), but that
+// wasn't a strong enough skew. Measured directly against leagueHistory.
+// rawPicks: historically, the top 12 salaries in a season (roughly the
+// league's studs, one per team) are nominated in the first 10% of the
+// draft 54.6% of the time, 33.3% in the second 10%, and essentially never
+// (0.9% or less) past the 40% mark. At the linear weighting, a 60-draft
+// sim only put 28.2%/21.9% in those first two deciles, with a long tail
+// out to 80% of the way through the draft. This matters beyond realism:
+// timingFactor (valuation.ts) discounts a player's price by how late they
+// were nominated, calibrated on the assumption that a late nomination
+// means a lesser player, same as in the real history it's drawn from — a
+// stud nominated late by chance in the sim got hit with that discount on
+// top of genuine late-draft scarcity, a double markdown history doesn't
+// support. Raising the exponent so weight = blended**this concentrates
+// nomination probability toward the board's best remaining players
+// without changing *which* strategy fires. Swept 1-4 against the same
+// rawPicks-derived decile distribution above (least-squares fit); 2.85
+// was the closest match (top-12 landing 55.0%/33.8%/9.7%/1.4%/0.1% across
+// the first five deciles).
+export const NOMINATION_VALUE_EXPONENT = 2.85
+
 // §4.2 — live inflation damping ("bots should react to it but not
 // perfectly").
 export const INFLATION_DAMPING = 0.6
