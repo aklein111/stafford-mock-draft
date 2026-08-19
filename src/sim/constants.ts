@@ -23,7 +23,7 @@
 // 4, via the auto-calibration script against calibration.targets, not by
 // hand-adjusting it now.
 export const NOISE_K = 0.35
-export const CENTERING = 1
+export const CENTERING = 0.5
 
 // REVISIONS.md Fix 2b — real managers set a number and stop; a bot's
 // actual walk-away price is its computed valuation times this, not the
@@ -49,9 +49,23 @@ export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
 // eligible slot (correlation ~0), because those positions share
 // FLEX+BENCH so broadly that "eligible" rarely excludes anyone until very
 // late. roomDemandFactor (valuation.ts) scales every bid down as the
-// fraction of still-eligible teams drops, bottoming out at this factor
-// when eligibility is down to a single team.
-export const ROOM_DEMAND_MIN_FACTOR = 0.6
+// room's average demand weight drops, bottoming out at this factor when
+// no team has any real interest left.
+//
+// Retuned up from 0.6 after a later investigation into teams underspending
+// overall: 62.5% of all RB/WR bid evaluations are for a non-dedicated
+// (FLEX/BENCH) slot — teams need only 2 dedicated RB and 2 dedicated WR
+// each, but have up to 7 more FLEX/BENCH slots that take either position —
+// and every one of those was taking *both* FLEX_OR_BENCH_NEED_FACTOR's
+// discount and this one, compounding to ~0.64x on average (measured
+// directly) well before restraint/inflation/etc. even applied. 0.6 was
+// tuned by itself, without accounting for that overlap. 0.85 keeps genuine
+// late-draft scarcity bargains intact (measured: a position down to one
+// interested team still crashes to 40-60% of blended) while no longer
+// doubling up with needFactor's own discount on every ordinary FLEX/BENCH
+// pick, which was the largest single driver of the overall underspend
+// (~87% -> ~90% of the $2400 pool spent, at 200-draft samples).
+export const ROOM_DEMAND_MIN_FACTOR = 0.85
 
 // REVISIONS.md Change 3, step 5 — a real bidding war needs a real chance
 // of happening. Step 4 made generateBudgetPlan fully deterministic (no
@@ -72,16 +86,23 @@ export const PLAN_TOP_JITTER_MIN = 0.5
 export const PLAN_TOP_JITTER_MAX = 2.0
 
 // Not from the spec's §3.4 list — this is for the bench-QB slot added
-// after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`
-// against calibration.avgRosteredByPos.QB (target 17.4/draft): bots were
-// grabbing a backup QB as often as a bench RB/WR/TE (both at
-// FLEX_OR_BENCH_NEED_FACTOR), overshooting to ~20/draft, since RB/WR/TE
-// supply is nearly exhausted by the time bench slots fill and a cheap
-// backup QB becomes the path of least resistance. A backup QB is weaker
-// value than a bench flex player in real drafts (mostly bye-week
-// insurance, not usable production), so it gets its own, lower factor.
-// 0.3 landed QB at 17.7/draft (target 17.4) across 200 drafts.
-export const BACKUP_QB_NEED_FACTOR = 0.3
+// after phase 4 shipped (see roster.ts). A backup QB is weaker value than
+// a bench flex player in real drafts (mostly bye-week insurance, not
+// usable production), so it gets its own, lower factor than
+// FLEX_OR_BENCH_NEED_FACTOR.
+//
+// Retuned 0.3 -> 0.5 in the same underspending pass as ROOM_DEMAND_MIN_
+// FACTOR above: backup-QB picks were pricing at just 0.35x blended
+// (measured directly), noticeably worse than every other position. Swept
+// 0.3-0.6 and picked 0.5 as the point where price improves substantially
+// (0.35 -> 0.57x) without moving quantity much (18.9 -> 19.6/draft) — the
+// 17.4/draft target this was originally tuned against is already
+// overshot by every value in that range, including the original 0.3, now
+// that the other underspending fixes (ROOM_DEMAND_MIN_FACTOR, the
+// BALANCED decay nudge) have shifted backup QB's appeal relative to a
+// bench RB/WR/TE. That quantity overshoot looks like a separate,
+// still-open problem, not something this factor controls much on its own.
+export const BACKUP_QB_NEED_FACTOR = 0.5
 export const LATE_DRAFT_SLOTS_THRESHOLD = 4
 export const LATE_DRAFT_MAX_BOOST = 0.25 // "up to 1.25"
 export const RICH_PER_SLOT_THRESHOLD = 8

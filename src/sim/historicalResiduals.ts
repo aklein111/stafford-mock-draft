@@ -27,6 +27,15 @@ export interface HistoricalDerived {
 
 const DECILES = 10
 const POOL_RADIUS = 3
+// A per-position decile bucket average is shrunk toward the all-position
+// curve for that decile, weighted as if SHRINKAGE_WEIGHT "phantom"
+// overall-average observations were mixed in. QB/TE/DEF only have
+// ~10-15 raw picks per decile bucket (vs 50+ for RB/WR) -- exactly the
+// "too few observations to be stable on its own" the addendum warns about
+// for positional-value smoothing, just showing up here in the timing
+// derivation instead. A thin bucket (e.g. n=9) ends up close to the
+// overall curve; a well-sampled one (n=50+) barely moves.
+const SHRINKAGE_WEIGHT = 15
 
 function isUsablePick(p: RawPick): p is RawPick & { pos: Position } {
   return !p.keeper && p.pos !== null && p.player !== '--empty--'
@@ -34,6 +43,10 @@ function isUsablePick(p: RawPick): p is RawPick & { pos: Position } {
 
 function average(xs: number[]): number {
   return xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : 1
+}
+
+function shrinkTowards(xs: number[], prior: number, weight: number): number {
+  return (xs.reduce((a, b) => a + b, 0) + prior * weight) / (xs.length + weight)
 }
 
 export function deriveHistoricalData(data: DraftData): HistoricalDerived {
@@ -94,7 +107,7 @@ export function deriveHistoricalData(data: DraftData): HistoricalDerived {
   for (const [pos, buckets] of posDecileRatios) {
     posTiming.set(
       pos,
-      buckets.map((ratios, i) => (ratios.length > 0 ? average(ratios) : overallTiming[i])),
+      buckets.map((ratios, i) => shrinkTowards(ratios, overallTiming[i], SHRINKAGE_WEIGHT)),
     )
   }
 

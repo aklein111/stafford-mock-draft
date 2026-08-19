@@ -42,9 +42,17 @@ export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
 // with room to spend. Re-tuned (alongside jitterTopSlot below) against
 // both calibrate.ts, so this doesn't re-break the step 4 shape targets,
 // and checkVariance.ts, so elite players stop being one-sided.
+//
+// Nudged 0.77 -> 0.80 in a later underspending pass: ~20% of all RB/WR bid
+// evaluations were actively capped by computePlannedMaxBid, and 0.77's
+// curve left the *non-splurge* slots (positions 3-14, which is most of a
+// BALANCED bot's roster) thinner than the players actually landing there
+// were worth. A small flattening thickens that tail without materially
+// undoing the top-slot fix above — re-verified against checkVariance.ts's
+// elite-player check afterward (still not one-sided) before keeping it.
 const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
   STARS_AND_SCRUBS: 0.55,
-  BALANCED: 0.77,
+  BALANCED: 0.80,
   EVEN_SPREAD: 0.97,
 }
 
