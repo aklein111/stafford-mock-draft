@@ -6,8 +6,8 @@ import type { DraftState } from './draftState'
 import type { Player, Position } from './types'
 import { openSlots, pickSlotFor, type Team } from './roster'
 import type { RNG } from './rng'
-import { randNormal } from './rng'
 import type { BotTraits } from './botTraits'
+import { getHistoricalDerived } from './historicalResiduals'
 import {
   BACKUP_QB_NEED_FACTOR,
   CENTERING,
@@ -30,15 +30,29 @@ export function playerKey(player: Player): string {
   return `${player.name}|${player.team}`
 }
 
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
 // §3.2 — each bot's private, persistent valuation of every player.
 // noiseK/centering default to the module constants but can be overridden —
 // the phase 4 calibration harness (scripts/calibrate.ts) sweeps both
 // without needing to edit source files.
 //
+// RAW_DATA_ADDENDUM.md Method A: the noise term is no longer a normal draw
+// (`normal(0, sd)`) — it's a residual sampled from what real Stafford
+// drafts actually paid at that positional rank (residualPool), pooled
+// against blended in the caller and passed in here so this stays
+// decoupled from the data file for testing. A raw residual of 1.4 means
+// "one of the nine seasons paid 40% over the smoothed target at this
+// rank" — traits.noiseScale and noiseK still control how much a given bot
+// actually believes that swing (same knobs as before), just scaling the
+// residual's *deviation from 1* rather than an additive dollar amount.
 export function buildBotValuations(
   players: Player[],
   traits: BotTraits,
   rng: RNG,
+  residualPool: (pos: Position, rank: number) => number[],
   noiseK: number = NOISE_K,
   centering: number = CENTERING,
 ): Map<string, number> {
@@ -47,37 +61,30 @@ export function buildBotValuations(
     const base = player.blended + centering
     const posMult = traits.positionBias[player.pos]
     const starMult = 1 + traits.starPreference * (player.blended / 70)
-    const noiseWidth =
-      player.sd * traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
-    const noise = randNormal(rng, 0, noiseWidth)
-    const value = (base * posMult * starMult + noise) * traits.aggression
+
+    const pool = residualPool(player.pos, player.posRank)
+    const rawResidual = pool.length > 0 ? pool[Math.floor(rng() * pool.length)] : 1
+    const widthScale = traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
+    const residual = 1 + (rawResidual - 1) * widthScale
+
+    const value = base * posMult * starMult * residual * traits.aggression
     values.set(playerKey(player), Math.max(0, value))
   }
   return values
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t
-}
-
 // §4.1 — how far off "par" clearing prices run at this point in the draft.
-// `positionTiming` gives "the same effect" as the overall decile curve but
-// split by position — i.e. it's a more specific replacement for a position
-// that has one, not an extra discount layered on top of the overall curve
-// (blending the two average two readings of the same underlying effect and
-// ends up over-discounting). DEF has no position-specific curve in the
-// data, so it falls back to the overall decile curve.
+// RAW_DATA_ADDENDUM.md: the old `calibration.timingMultiplier` /
+// `positionTiming` fields are gone from the data file — derived instead
+// from leagueHistory.rawPicks' nominationPick (format note 3: "it's what
+// makes timing effects modellable directly"), per position where there's
+// enough history and falling back to the all-position curve where a
+// position/decile combination is too thin (see historicalResiduals.ts).
 export function timingFactor(state: DraftState, pos: Position): number {
   const totalSlots = state.data.meta.teams * state.data.meta.rosterSpots
   const progress = totalSlots > 0 ? Math.min(1, state.pickNumber / totalSlots) : 0
-
-  const pt = state.data.calibration.positionTiming[pos]
-  if (pt) {
-    return progress <= 0.5 ? lerp(pt.early, pt.mid, progress / 0.5) : lerp(pt.mid, pt.late, (progress - 0.5) / 0.5)
-  }
-
   const decile = Math.min(9, Math.floor(progress * 10))
-  return state.data.calibration.timingMultiplier[decile] ?? 1
+  return getHistoricalDerived(state.data).timingMultiplier(pos, decile)
 }
 
 // §4.2 — live inflation: how much money is left on the table relative to

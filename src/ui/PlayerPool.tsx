@@ -48,7 +48,7 @@ export function PlayerPool({
   }, [state.drafted.length])
 
   const rows = useMemo(() => {
-    let players = state.data.players
+    let players = state.data.currentPlayers
     if (posFilter !== 'ALL') players = players.filter((p) => p.pos === posFilter)
     if (watchOnly) players = players.filter((p) => watchList.has(playerKey(p)))
     if (search.trim()) {
@@ -57,7 +57,7 @@ export function PlayerPool({
     }
     const sorted = [...players].sort((a, b) => (sortDesc ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]))
     return sorted
-  }, [state.data.players, posFilter, watchOnly, watchList, search, sortKey, sortDesc])
+  }, [state.data.currentPlayers, posFilter, watchOnly, watchList, search, sortKey, sortDesc])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDesc((d) => !d)

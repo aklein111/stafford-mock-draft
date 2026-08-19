@@ -1,4 +1,4 @@
-import raw from '../data/stafford_draft_data.json'
+import raw from '../data/stafford_draft_data_raw.json'
 import type { DraftData } from './types'
 
 // The JSON file is loaded once, at import time (spec §2: "Load it once at
@@ -8,11 +8,14 @@ import type { DraftData } from './types'
 export const draftData = raw as unknown as DraftData
 
 export function validateDraftData(data: DraftData): void {
-  if (!data.meta || !Array.isArray(data.players) || !Array.isArray(data.priceCurve)) {
-    throw new Error('stafford_draft_data.json is missing required fields (meta/players/priceCurve)')
+  if (!data.meta || !Array.isArray(data.currentPlayers) || !Array.isArray(data.priceCurve)) {
+    throw new Error('stafford_draft_data_raw.json is missing required fields (meta/currentPlayers/priceCurve)')
   }
-  if (data.players.length === 0) {
-    throw new Error('stafford_draft_data.json has no players')
+  if (data.currentPlayers.length === 0) {
+    throw new Error('stafford_draft_data_raw.json has no currentPlayers')
+  }
+  if (!data.leagueHistory || !Array.isArray(data.leagueHistory.rawPicks) || data.leagueHistory.rawPicks.length === 0) {
+    throw new Error('stafford_draft_data_raw.json is missing leagueHistory.rawPicks')
   }
   const expectedSlots = data.meta.teams * data.meta.rosterSpots
   if (data.priceCurve.length !== expectedSlots) {
