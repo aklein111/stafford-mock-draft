@@ -34,6 +34,24 @@ describe('computeBotBids', () => {
     expect(bids).toHaveLength(1)
     expect(bids[0].team.id).toBe(2)
   })
+
+  it('guarantees a bot nominator a $1 opening bid, even if its own maxBidFn returns 0', () => {
+    const state = createInitialState(draftData, 1)
+    const human = createTeam(1, 'Me', 200, ['WR'], 0)
+    const bot = createTeam(2, 'Bot', 200, ['RB'], 0)
+    state.teams = [human, bot]
+    const bids = computeBotBids(state, makePlayer({ pos: 'RB' }), () => 0, 1, 2)
+    expect(bids).toEqual([{ team: bot, maxBid: 1 }])
+  })
+
+  it('does not force a bid for the human, even when the human nominated', () => {
+    const state = createInitialState(draftData, 1)
+    const human = createTeam(1, 'Me', 200, ['RB'], 0)
+    const bot = createTeam(2, 'Bot', 200, ['WR'], 0) // ineligible for the RB nominated
+    state.teams = [human, bot]
+    const bids = computeBotBids(state, makePlayer({ pos: 'RB' }), () => 0, 1, 1)
+    expect(bids).toEqual([]) // the human's own opener is handled by finalizeAuction, not here
+  })
 })
 
 describe('currentStanding', () => {
@@ -106,5 +124,28 @@ describe('finalizeAuction', () => {
     const state = createInitialState(draftData, 1)
     const human = createTeam(1, 'Me', 200, ['RB'], 0)
     expect(finalizeAuction(state, [], human, 0)).toBeNull()
+  })
+
+  it('the human wins at $1 when they nominated and nobody (including the human) ends up bidding', () => {
+    const state = createInitialState(draftData, 1)
+    const human = createTeam(1, 'Me', 200, ['RB'], 0)
+    const player = makePlayer({ pos: 'RB' })
+    const result = finalizeAuction(state, [], human, 0, player, 1)
+    expect(result?.winner?.id).toBe(1)
+    expect(result?.price).toBe(1)
+  })
+
+  it('does not force a win when the human nominated a position they have no slot for', () => {
+    const state = createInitialState(draftData, 1)
+    const human = createTeam(1, 'Me', 200, ['WR'], 0) // no RB slot at all
+    const player = makePlayer({ pos: 'RB' })
+    expect(finalizeAuction(state, [], human, 0, player, 1)).toBeNull()
+  })
+
+  it('does not force a win when a bot nominated and the human just happened not to bid', () => {
+    const state = createInitialState(draftData, 1)
+    const human = createTeam(1, 'Me', 200, ['RB'], 0)
+    const player = makePlayer({ pos: 'RB' })
+    expect(finalizeAuction(state, [], human, 0, player, 2)).toBeNull()
   })
 })

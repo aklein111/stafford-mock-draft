@@ -141,6 +141,42 @@ describe('auction resolution', () => {
   })
 })
 
+describe('nominator opens at $1 (user report: nominations were going back to the pool with no bidders)', () => {
+  it('a nomination is itself an opening $1 bid: an eligible nominator wins at $1 when nobody else bids', () => {
+    const state = createInitialState(draftData, 1)
+    const nominator = createTeam(1, 'A', 200, ['RB'], 0)
+    state.teams = [nominator]
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), () => 0, nominator.id)
+    expect(result.winner?.id).toBe(1)
+    expect(result.price).toBe(1)
+  })
+
+  it('does not add a second bid when the nominator already has a real one', () => {
+    const state = createInitialState(draftData, 1)
+    const nominator = createTeam(1, 'A', 200, ['RB'], 0)
+    const other = createTeam(2, 'B', 200, ['RB'], 0)
+    state.teams = [nominator, other]
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), (_state, team) => (team.id === 1 ? 40 : 0), nominator.id)
+    expect(result.winner?.id).toBe(1)
+    expect(result.price).toBe(1) // still the $1 minimum -- the real $40 bid isn't doubled up
+  })
+
+  it('a nominator with no eligible slot for the position still gets no bid (a deliberate budget-drain nomination is not forced to buy)', () => {
+    const state = createInitialState(draftData, 1)
+    const nominator = createTeam(1, 'A', 200, ['WR'], 0) // no RB slot at all
+    state.teams = [nominator]
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), () => 0, nominator.id)
+    expect(result.winner).toBeNull()
+  })
+
+  it('without a nominatorId, behavior is unchanged (no forced bid)', () => {
+    const state = createInitialState(draftData, 1)
+    state.teams = [createTeam(1, 'A', 200, ['RB'], 0)]
+    const result = resolveAuction(state, makePlayer({ pos: 'RB' }), () => 0)
+    expect(result.winner).toBeNull()
+  })
+})
+
 describe('full draft with trivial $1 bots', () => {
   it('runs to completion without ever breaking the budget rule', () => {
     const state = createInitialState(draftData, 42)

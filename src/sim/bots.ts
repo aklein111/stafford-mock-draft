@@ -2,7 +2,7 @@ import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
 import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
-import { DEF_MAX_BID } from './constants'
+import { BOT_MAX_TE, DEF_MAX_BID } from './constants'
 import { traitsFromOwnerDraw, type BotTraits } from './botTraits'
 import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 import { getHistoricalDerived } from './historicalResiduals'
@@ -92,7 +92,8 @@ export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, no
 // stops, rather than pushing to the edge of what it can technically
 // afford) — DEF is hard-capped at DEF_MAX_BID regardless of how that chain
 // stacks up, since a real manager streams defenses rather than paying a
-// premium for one — then capped at what the bot's own budget plan has
+// premium for one, and a bot already holding BOT_MAX_TE tight ends won't
+// bid on another one at all — then capped at what the bot's own budget plan has
 // reserved for every other slot it still needs to fill (Fix 2a), itself
 // tilted by this bot's drawn early-spending eagerness
 // (BOT_PERSONALITIES.md). The engine separately enforces the hard
@@ -105,6 +106,10 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
   return (state, team, player) => {
     const bot = byTeamId.get(team.id)
     if (!bot) return 0
+
+    if (player.pos === 'TE' && team.slots.filter((s) => s.filled?.player.pos === 'TE').length >= BOT_MAX_TE) {
+      return 0
+    }
 
     const anchor = bot.valuations.get(playerKey(player)) ?? player.blended
     const timing = timingFactor(state, player.pos)

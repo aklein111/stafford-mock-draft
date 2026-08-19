@@ -33,6 +33,9 @@ export interface CurrentAuction {
   // Captured at nomination time, before the rotation pointer advances
   // further — needed to reverse this specific pick if the human undoes it.
   nominationPointerBefore: number
+  // Who put this player up — feeds finalizeAuction's guaranteed opening
+  // $1 bid (nomination is itself an opening bid in a real auction).
+  nominatorId: number
 }
 
 export interface DraftController {
@@ -164,11 +167,11 @@ function setupNextStep(c: ControllerInternals): void {
   }
 
   const humanTeam = c.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
-  const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID)
+  const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID, nominator.id)
   const humanEligible = !isRosterFull(humanTeam) && canBidOnPositionSafely(c.state.teams, c.state.undrafted, humanTeam, player.pos)
 
   c.phase = 'auctioning'
-  c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore }
+  c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore, nominatorId: nominator.id }
 }
 
 export function useDraftController(data: DraftData, seed: number, humanName = HUMAN_OWNER_NAME): DraftController {
@@ -194,10 +197,10 @@ export function useDraftController(data: DraftData, seed: number, humanName = HU
       nextNominator(c.state) // commits the rotation slot
 
       const humanTeam = c.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
-      const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID)
+      const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID, HUMAN_TEAM_ID)
       const humanEligible = !isRosterFull(humanTeam) && canBidOnPositionSafely(c.state.teams, c.state.undrafted, humanTeam, player.pos)
       c.phase = 'auctioning'
-      c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore }
+      c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore, nominatorId: HUMAN_TEAM_ID }
       bump()
     },
     [bump],
@@ -246,7 +249,14 @@ export function useDraftController(data: DraftData, seed: number, humanName = HU
       draftedLengthBefore: c.state.drafted.length,
       player: c.currentAuction.player,
     }
-    const result = finalizeAuction(c.state, c.currentAuction.botBids, humanTeam, c.currentAuction.humanBid)
+    const result = finalizeAuction(
+      c.state,
+      c.currentAuction.botBids,
+      humanTeam,
+      c.currentAuction.humanBid,
+      c.currentAuction.player,
+      c.currentAuction.nominatorId,
+    )
     applyAuctionResult(c.state, c.currentAuction.player, result)
     if (result?.winner) c.lastPick = snapshot
     c.currentAuction = null
