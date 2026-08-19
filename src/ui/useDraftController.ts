@@ -18,6 +18,7 @@ import { applyAuctionResult, isDraftComplete, type Bid } from '../sim/engine'
 import { computeBotBids, currentStanding, finalizeAuction } from '../sim/humanAuction'
 import { playerKey } from '../sim/valuation'
 import { canBidOnPositionSafely, isRosterFull, legalMaxBid, type Team } from '../sim/roster'
+import { HUMAN_OWNER_NAME } from '../sim/ownerProfiles'
 
 export type DraftPhase = 'nominating' | 'auctioning' | 'complete'
 
@@ -95,6 +96,11 @@ function createInternals(data: DraftData, seed: number, humanName: string): Cont
   humanTeam.name = humanName
   const botTeamIds = state.teams.filter((t) => t.id !== HUMAN_TEAM_ID).map((t) => t.id)
   const botStates = createBotStates(botTeamIds, data, state.rng)
+  // BOT_PERSONALITIES.md: "label the bots with the real names" — team.name
+  // is what every live panel (OtherTeams, ResultsScreen) actually renders.
+  for (const bot of botStates) {
+    state.teams.find((t) => t.id === bot.teamId)!.name = bot.name
+  }
   return {
     state,
     botStates,
@@ -165,7 +171,7 @@ function setupNextStep(c: ControllerInternals): void {
   c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore }
 }
 
-export function useDraftController(data: DraftData, seed: number, humanName = 'You'): DraftController {
+export function useDraftController(data: DraftData, seed: number, humanName = HUMAN_OWNER_NAME): DraftController {
   const [version, forceRender] = useState(0)
   const bump = useCallback(() => forceRender((n) => n + 1), [])
 

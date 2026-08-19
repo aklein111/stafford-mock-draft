@@ -62,10 +62,20 @@ describe('bot nomination strategy (spec §3.7)', () => {
 
     const botState: BotState = {
       teamId: 1,
-      archetype: 'NEUTRAL',
-      traits: { aggression: 1, positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 }, starPreference: 0, disciplineDecay: 1, noiseScale: 1, restraint: 1 },
+      name: 'TestBot',
+      drawnTraits: {
+        qbShare: 0.06,
+        rbShare: 0.47,
+        wrShare: 0.4,
+        teShare: 0.06,
+        top3Concentration: 0.6,
+        shareSpentByNom40: 0.54,
+        dollarPlayers: 4,
+        biggestBuy: 0.28,
+        overpayRatio: 1,
+      },
+      traits: { overpayRatio: 1, positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 }, starPreference: 0, disciplineDecay: 1, noiseScale: 1, restraint: 1 },
       valuations: new Map([[playerKey(wanted), 30], [playerKey(unwanted), 60]]),
-      budgetPlanArchetype: 'BALANCED',
       budgetPlan: new Array(14).fill(200 / 14),
     }
 

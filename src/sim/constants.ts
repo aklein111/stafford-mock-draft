@@ -15,15 +15,32 @@
 // the draft too expensive. REVISIONS.md says to start low and only raise
 // it if drafts feel too samey: 0.35.
 //
-// CENTERING is still the old pre-REVISIONS value (=1), tuned against a
-// different data schema and before the budget reserve (Fix 2a) and
-// restraint (Fix 2b) existed — it has no remaining justification under
-// the current mechanics and is very likely wrong now. Deliberately left
-// untouched here: REVISIONS.md's order of work puts re-tuning it in step
-// 4, via the auto-calibration script against calibration.targets, not by
-// hand-adjusting it now.
+// CENTERING re-tuned by npm run calibrate after BOT_PERSONALITIES.md's
+// owner-driven budget plan replaced the old fixed archetype menu. The
+// script didn't converge and wouldn't auto-write — worth recording why,
+// since it isn't a bug in this value. The real top3Concentration data
+// (league mean 0.6164 — managers really do spend ~62% of budget on their
+// top 3 picks) is a steeper curve for *every* bot than the old system's
+// population (1 steep stars-and-scrubs bot, 9 much-flatter balanced, 1
+// even-spread). Verified directly: forcing every bot's drawn
+// top3Concentration to the old flat ~0.51 pulls top-24 share of pool from
+// ~52% back to ~50%, right where calibrate.ts's target sits — confirming
+// this is the real, data-backed source of the gap, not noise or a coding
+// error. NOISE_K sweeps 0.35 down to 0.16 barely move it either (~52.5%
+// throughout), so the winner's-curse mechanism Fix 2c targets isn't the
+// driver. Since CENTERING more negative than -0.75 breaks roster
+// completion outright (fill collapses below 20% — bots stop valuing cheap
+// players enough to bid at all) with no further gain even before that
+// point, 1.25 is calibrate.ts's own best safe candidate: 99.6% fill,
+// individual price anchors (nthMostExpensive) matching within a few
+// dollars at every N, and the residual ~3.8pt top-24-share gap is this
+// same real, understood effect — a genuinely more broadly-competitive
+// elite market than the old synthetic population — not something this
+// knob can close without breaking roster completion. Flagging as a known,
+// deliberately-not-chased gap rather than a bug, same as the backup-QB
+// quantity overshoot above.
 export const NOISE_K = 0.35
-export const CENTERING = -0.25
+export const CENTERING = 1.25
 
 // REVISIONS.md Fix 2b — real managers set a number and stop; a bot's
 // actual walk-away price is its computed valuation times this, not the
@@ -159,3 +176,39 @@ export const NOMINATION_VALUE_EXPONENT = 2.85
 // §4.2 — live inflation damping ("bots should react to it but not
 // perfectly").
 export const INFLATION_DAMPING = 0.6
+
+// BOT_PERSONALITIES.md — turning a bot's per-draft owner-trait draw
+// (ownerProfiles.ts) into behaviour. qbShare/rbShare/wrShare/teShare and
+// top3Concentration drive the budget plan directly (budgetPlan.ts) *and*
+// the mapping table says they should also nudge positionBias/
+// starPreference (per-player valuation, not just total dollars). Applying
+// the full deviation to both would double-count the same signal the way
+// roomDemandFactor and needFactor once did (see that constant's own
+// history above) — these dampen the valuation-side echo so the budget
+// plan's harder dollar cap does most of the work.
+export const POSITION_BIAS_DAMPING = 0.5
+export const STAR_PREFERENCE_SCALE = 0.6
+
+// shareSpentByNom40 ("how eagerly it spends early; feeds the budget
+// reserve") only has something to feed before the draft reaches the
+// checkpoint it's measured against — nomination 40 in the source data's
+// own 168-pick season, the same scale this league's 12 teams x 14 spots
+// happens to share exactly. Before that point, a bot who historically
+// front-loads spending gets a smaller reserve held back (more usable now);
+// a patient one gets a bigger reserve (less usable now) — computePlannedMaxBid
+// applies this as a straight multiplier on the reserve it already computes.
+//
+// Measured directly (100-draft sample): raising this scale buys almost
+// nothing on price shape (top-24 share of pool moves ~52.2% -> 51.3%
+// across the full 0-2 range) but costs real roster completion (99.9% ->
+// 98.1% fill) — tightening every bot's early reserve simultaneously means
+// more of them can strand a later slot. 1.0 keeps the behavioural tilt
+// this trait is actually meant to model (99.6% fill, still a real
+// early/late spending difference between an eager and a patient bot)
+// without chasing price-shape gains this lever was never going to
+// deliver — see CENTERING's own comment for where that gap actually
+// comes from.
+export const NOMINATION_40_CHECKPOINT = 40
+export const EARLY_SPEND_RESERVE_SCALE = 1.0
+export const MIN_RESERVE_SCALE = 0.7
+export const MAX_RESERVE_SCALE = 1.3

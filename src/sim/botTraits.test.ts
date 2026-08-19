@@ -1,43 +1,65 @@
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from './rng'
-import { assignArchetypes, generateBotTraits } from './botTraits'
+import { traitsFromOwnerDraw } from './botTraits'
+import { TRAIT_STATS, type DrawnOwnerTraits } from './ownerProfiles'
 
-describe('bot traits (spec §3.1)', () => {
-  it('assigns the room archetypes the spec calls out: 2 RB-heavy, 2 WR-heavy, 1 early-QB, 1 punt-TE, rest neutral', () => {
-    const archetypes = assignArchetypes(11, mulberry32(1))
-    const counts = archetypes.reduce<Record<string, number>>((acc, a) => {
-      acc[a] = (acc[a] ?? 0) + 1
-      return acc
-    }, {})
-    expect(counts.RB_HEAVY).toBe(2)
-    expect(counts.WR_HEAVY).toBe(2)
-    expect(counts.EARLY_QB).toBe(1)
-    expect(counts.PUNT_TE).toBe(1)
-    expect(counts.NEUTRAL).toBe(5)
-  })
+function leagueAverageDraw(overrides: Partial<DrawnOwnerTraits> = {}): DrawnOwnerTraits {
+  return {
+    qbShare: TRAIT_STATS.qbShare.leagueMean,
+    rbShare: TRAIT_STATS.rbShare.leagueMean,
+    wrShare: TRAIT_STATS.wrShare.leagueMean,
+    teShare: TRAIT_STATS.teShare.leagueMean,
+    top3Concentration: TRAIT_STATS.top3Concentration.leagueMean,
+    shareSpentByNom40: TRAIT_STATS.shareSpentByNom40.leagueMean,
+    dollarPlayers: TRAIT_STATS.dollarPlayers.leagueMean,
+    biggestBuy: TRAIT_STATS.biggestBuy.leagueMean,
+    overpayRatio: TRAIT_STATS.overpayRatio.leagueMean,
+    ...overrides,
+  }
+}
 
-  it('keeps every trait within its declared range', () => {
-    const traits = generateBotTraits(11, mulberry32(42))
-    for (const t of traits) {
-      expect(t.aggression).toBeGreaterThanOrEqual(0.9)
-      expect(t.aggression).toBeLessThanOrEqual(1.1)
-      expect(t.starPreference).toBeGreaterThanOrEqual(-0.1)
-      expect(t.starPreference).toBeLessThanOrEqual(0.1)
-      expect(t.disciplineDecay).toBeGreaterThanOrEqual(0.5)
-      expect(t.disciplineDecay).toBeLessThanOrEqual(1.5)
-      expect(t.noiseScale).toBeGreaterThanOrEqual(0.7)
-      expect(t.noiseScale).toBeLessThanOrEqual(1.3)
-      expect(t.restraint).toBeGreaterThanOrEqual(0.85)
-      expect(t.restraint).toBeLessThanOrEqual(0.95)
-      for (const pos of ['QB', 'RB', 'WR', 'TE', 'DEF'] as const) {
-        expect(t.positionBias[pos]).toBeGreaterThan(0)
-      }
+describe('traitsFromOwnerDraw (BOT_PERSONALITIES.md)', () => {
+  it('a draw exactly at the league mean produces neutral position bias and star preference', () => {
+    const traits = traitsFromOwnerDraw(leagueAverageDraw(), mulberry32(1))
+    for (const pos of ['QB', 'RB', 'WR', 'TE'] as const) {
+      expect(traits.positionBias[pos]).toBeCloseTo(1)
     }
+    expect(traits.starPreference).toBeCloseTo(0)
   })
 
-  it('is deterministic for a given seed', () => {
-    const a = generateBotTraits(11, mulberry32(7))
-    const b = generateBotTraits(11, mulberry32(7))
+  it('DEF bias always stays neutral — not a modelled owner trait', () => {
+    const traits = traitsFromOwnerDraw(leagueAverageDraw({ rbShare: 0.7, wrShare: 0.2 }), mulberry32(1))
+    expect(traits.positionBias.DEF).toBe(1)
+  })
+
+  it('above-average rbShare produces above-1 RB bias, damped below the raw ratio', () => {
+    const mean = TRAIT_STATS.rbShare.leagueMean
+    const traits = traitsFromOwnerDraw(leagueAverageDraw({ rbShare: mean * 1.4 }), mulberry32(1))
+    expect(traits.positionBias.RB).toBeGreaterThan(1)
+    expect(traits.positionBias.RB).toBeLessThan(1.4) // damped, not a 1:1 echo of the drawn share
+  })
+
+  it('overpayRatio passes through undamped — BOT_PERSONALITIES.md: "a small multiplier on its walk-away price"', () => {
+    const traits = traitsFromOwnerDraw(leagueAverageDraw({ overpayRatio: 1.15 }), mulberry32(1))
+    expect(traits.overpayRatio).toBe(1.15)
+  })
+
+  it('starPreference stays within its declared range even for an extreme top3Concentration draw', () => {
+    const traits = traitsFromOwnerDraw(leagueAverageDraw({ top3Concentration: TRAIT_STATS.top3Concentration.observedMax }), mulberry32(1))
+    expect(traits.starPreference).toBeLessThanOrEqual(0.1)
+    expect(traits.starPreference).toBeGreaterThanOrEqual(-0.1)
+  })
+
+  it('keeps the non-owner-backed traits within their declared ranges and deterministic for a given seed', () => {
+    const a = traitsFromOwnerDraw(leagueAverageDraw(), mulberry32(7))
+    const b = traitsFromOwnerDraw(leagueAverageDraw(), mulberry32(7))
     expect(a).toEqual(b)
+
+    expect(a.disciplineDecay).toBeGreaterThanOrEqual(0.5)
+    expect(a.disciplineDecay).toBeLessThanOrEqual(1.5)
+    expect(a.noiseScale).toBeGreaterThanOrEqual(0.7)
+    expect(a.noiseScale).toBeLessThanOrEqual(1.3)
+    expect(a.restraint).toBeGreaterThanOrEqual(0.85)
+    expect(a.restraint).toBeLessThanOrEqual(0.95)
   })
 })
