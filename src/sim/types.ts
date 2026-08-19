@@ -1,4 +1,6 @@
-// Shapes of the data in src/data/stafford_draft_data.json (spec §2).
+// Shapes of the data in src/data/stafford_draft_data.json (spec §2, as
+// amended by REVISIONS.md change 1: no personal ranking fields — the data
+// file has none, and the app must not add its own).
 
 export type Position = 'QB' | 'RB' | 'WR' | 'TE' | 'DEF'
 export type FlexEligiblePosition = 'RB' | 'WR' | 'TE'
@@ -22,15 +24,30 @@ export interface PositionTiming {
   late: number
 }
 
+// REVISIONS.md change 2 — the real shape of a Stafford draft (price bands,
+// price of the Nth-most-expensive player, top-N share of the pool), used
+// as the calibration harness's acceptance criteria.
+export interface PriceBand {
+  low: number
+  high: number | null
+  playersPerDraft: number
+}
+
+export interface CalibrationTargets {
+  priceBands: PriceBand[]
+  nthMostExpensive: Record<string, number>
+  topNShareOfPool: Record<string, number>
+  note: string
+}
+
 export interface Calibration {
   baselineInflation: number
-  note: string
   moneyClock: number[]
   timingMultiplier: number[]
   positionTiming: Record<Position, PositionTiming>
   avgRosteredByPos: Record<Position, number>
   dollarSpotsPerTeam: number
-  positionScheme: Record<Position, string>
+  targets: CalibrationTargets
 }
 
 export interface PositionalValue {
@@ -44,18 +61,18 @@ export interface PositionalValue {
   sd: number
 }
 
+// REVISIONS.md change 1 — no myRank/myValue/edge: the room's market view
+// only, not the human's personal opinion of any player.
 export interface Player {
   name: string
   team: string
   pos: Position
-  myRank: number
-  myValue: number
+  marketRank: number
+  posRank: number
   yahooAAV: number
-  consensusRank: number
-  consensusPosRank: number
-  leaguePosTarget: number
-  expected: number
-  edge: number
+  leagueOverall: number
+  leaguePositional: number
+  blended: number
   tier: number
   sd: number
   matchedYahoo: boolean

@@ -100,7 +100,7 @@ function createInternals(data: DraftData, seed: number, humanName: string): Cont
   const humanTeam = state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
   humanTeam.name = humanName
   const botTeamIds = state.teams.filter((t) => t.id !== HUMAN_TEAM_ID).map((t) => t.id)
-  const botStates = createBotStates(botTeamIds, data.players, state.rng)
+  const botStates = createBotStates(botTeamIds, data, state.rng)
   return {
     state,
     botStates,
@@ -131,13 +131,19 @@ function peekNextNominatorId(state: DraftState): number | null {
 
 // Watch-list auto-skip (spec §5 Pacing): a starred player always pauses;
 // an unstarred one only pauses while the bots' own bidding hasn't yet
-// passed what the player is worth to the human (`myValue` — their private
-// ranking, per spec §2 — is exactly "my max" here).
+// passed what the player is worth. REVISIONS.md change 1 removed the
+// human's personal valuation (`myValue`) this was originally keyed on —
+// there's no "my max" left to compare against — so this now uses
+// `blended`, the market's own anchor price, as the next-best stand-in:
+// skip once the room has bid past what the market itself thinks the
+// player is worth. REVISIONS.md doesn't address the watch list directly;
+// this is a judgment call to keep the feature working, not a spec'd
+// number.
 function shouldPauseForHuman(player: Player, botBids: Bid[], humanTeam: Team, watchList: Set<string>): boolean {
   if (watchList.has(playerKey(player))) return true
   const baseline = currentStanding(botBids, humanTeam, 0)
   if (!baseline) return true
-  return baseline.price <= player.myValue
+  return baseline.price <= player.blended
 }
 
 type StepStatus = 'advanced' | 'input-needed'

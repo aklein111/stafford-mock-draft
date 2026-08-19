@@ -22,6 +22,7 @@ import {
   POOR_PER_SLOT_THRESHOLD,
   RICH_PER_SLOT_BOOST,
   RICH_PER_SLOT_THRESHOLD,
+  ROOM_DEMAND_MIN_FACTOR,
   UNMATCHED_YAHOO_NOISE_MULT,
 } from './constants'
 
@@ -43,9 +44,9 @@ export function buildBotValuations(
 ): Map<string, number> {
   const values = new Map<string, number>()
   for (const player of players) {
-    const base = player.expected + centering
+    const base = player.blended + centering
     const posMult = traits.positionBias[player.pos]
-    const starMult = 1 + traits.starPreference * (player.expected / 70)
+    const starMult = 1 + traits.starPreference * (player.blended / 70)
     const noiseWidth =
       player.sd * traits.noiseScale * noiseK * (player.matchedYahoo ? 1 : UNMATCHED_YAHOO_NOISE_MULT)
     const noise = randNormal(rng, 0, noiseWidth)
@@ -83,9 +84,9 @@ export function timingFactor(state: DraftState, pos: Position): number {
 // what the remaining players are nominally worth.
 export function computeInflation(state: DraftState): number {
   const remainingBudget = state.teams.reduce((sum, t) => sum + (t.budget - t.spent), 0)
-  const remainingExpected = state.undrafted.reduce((sum, p) => sum + p.expected, 0)
-  if (remainingExpected <= 0) return 1
-  return remainingBudget / remainingExpected
+  const remainingBlended = state.undrafted.reduce((sum, p) => sum + p.blended, 0)
+  if (remainingBlended <= 0) return 1
+  return remainingBudget / remainingBlended
 }
 
 // Damped so bots react to inflation without perfectly correcting for it.
@@ -132,6 +133,40 @@ export function needFactor(
   if (dollarsPerSlot(team) > RICH_PER_SLOT_THRESHOLD) factor *= 1 + RICH_PER_SLOT_BOOST
 
   return factor
+}
+
+// How much a single team's presence in the room actually contributes to
+// competitive pressure on `pos`, right now — used by roomDemandFactor. A
+// flat eligible/not-eligible split (canBidOnPosition) doesn't work for
+// RB/WR/TE: they share FLEX and BENCH so broadly that almost every team
+// stays technically "eligible" until very late in the draft, so that
+// signal barely moves across most of the draft (measured: RB/WR/TE showed
+// near-zero correlation between eligible-team-count and price/blended).
+// Weighting by *which* slot a team would actually use — a dedicated
+// starter slot means real, specific demand; FLEX is weaker, general
+// demand; BENCH is weaker still — gives a signal that actually declines
+// through the draft as dedicated slots fill, the way real scarcity does.
+function teamDemandWeight(team: Team, pos: Position): number {
+  const slot = pickSlotFor(team, pos)
+  if (!slot) return 0
+  if (slot.type === pos) return 1
+  if (slot.type === 'FLEX') return 0.5
+  return 0.25 // BENCH
+}
+
+// REVISIONS.md Change 3, step 5 — room-wide scarcity. needFactor only
+// captures how much *this* team wants the position; it says nothing about
+// how many other teams are still realistically in the market for it,
+// which is what actually produces a late-draft bargain in a real auction.
+// Scales every bid down as the room's average demand weight drops,
+// regardless of the bidding team's own need — even a team with a
+// dedicated open slot should pay less when there's little real
+// competition for it.
+export function roomDemandFactor(state: DraftState, pos: Position): number {
+  const total = state.teams.length
+  if (total === 0) return 1
+  const avgWeight = state.teams.reduce((sum, t) => sum + teamDemandWeight(t, pos), 0) / total
+  return lerp(ROOM_DEMAND_MIN_FACTOR, 1, avgWeight)
 }
 
 export function isPoorPerSlot(team: Team): boolean {

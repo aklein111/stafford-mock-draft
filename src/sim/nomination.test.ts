@@ -12,14 +12,12 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
     name: 'Test Player',
     team: 'XXX',
     pos: 'RB',
-    myRank: 1,
-    myValue: 10,
+    marketRank: 1,
+    posRank: 1,
     yahooAAV: 10,
-    consensusRank: 1,
-    consensusPosRank: 1,
-    leaguePosTarget: 10,
-    expected: 10,
-    edge: 0,
+    leagueOverall: 10,
+    leaguePositional: 10,
+    blended: 10,
     tier: 1,
     sd: 2,
     matchedYahoo: true,
@@ -40,8 +38,8 @@ describe('bot nomination strategy (spec §3.7)', () => {
     assignPlayer(nominator, makePlayer({ name: 'RB1', pos: 'RB' }), 10, 1) // RB now full
     state.teams = [nominator]
 
-    const rbCandidate = makePlayer({ name: 'ExpensiveRB', pos: 'RB', expected: 50 })
-    const wrCandidate = makePlayer({ name: 'SomeWR', pos: 'WR', expected: 10 })
+    const rbCandidate = makePlayer({ name: 'ExpensiveRB', pos: 'RB', blended: 50 })
+    const wrCandidate = makePlayer({ name: 'SomeWR', pos: 'WR', blended: 10 })
     state.undrafted = [rbCandidate, wrCandidate]
     state.rng = scriptedRng([0.1, 0.5]) // 0.1 < 0.45 -> budget drain
 
@@ -56,8 +54,8 @@ describe('bot nomination strategy (spec §3.7)', () => {
     const poor = createTeam(2, 'B', 20, ['RB', 'WR'], 0) // $10/slot, drags the average down
     state.teams = [flush, poor]
 
-    const wanted = makePlayer({ name: 'WantedWR', pos: 'WR', expected: 30 })
-    const unwanted = makePlayer({ name: 'FullPositionRB', pos: 'RB', expected: 60 })
+    const wanted = makePlayer({ name: 'WantedWR', pos: 'WR', blended: 30 })
+    const unwanted = makePlayer({ name: 'FullPositionRB', pos: 'RB', blended: 60 })
     assignPlayer(flush, makePlayer({ name: 'RB1', pos: 'RB' }), 10, 1) // flush team's RB slot is full
     state.undrafted = [wanted, unwanted]
     state.rng = scriptedRng([0.5, 0.5]) // between 0.45 and 0.75 -> value grab
@@ -65,8 +63,10 @@ describe('bot nomination strategy (spec §3.7)', () => {
     const botState: BotState = {
       teamId: 1,
       archetype: 'NEUTRAL',
-      traits: { aggression: 1, positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 }, starPreference: 0, disciplineDecay: 1, noiseScale: 1 },
+      traits: { aggression: 1, positionBias: { QB: 1, RB: 1, WR: 1, TE: 1, DEF: 1 }, starPreference: 0, disciplineDecay: 1, noiseScale: 1, restraint: 1 },
       valuations: new Map([[playerKey(wanted), 30], [playerKey(unwanted), 60]]),
+      budgetPlanArchetype: 'BALANCED',
+      budgetPlan: new Array(14).fill(200 / 14),
     }
 
     const strategy = createBotNominationStrategy([botState])
@@ -79,8 +79,8 @@ describe('bot nomination strategy (spec §3.7)', () => {
     const nominator = createTeam(1, 'A', 200, ['RB', 'TE'], 0)
     assignPlayer(nominator, makePlayer({ name: 'RB1', pos: 'RB' }), 10, 1) // only TE starter open
 
-    const tePlayer = makePlayer({ name: 'OpenHoleTE', pos: 'TE', expected: 15 })
-    const rbPlayer = makePlayer({ name: 'AlreadyFullRB', pos: 'RB', expected: 15 })
+    const tePlayer = makePlayer({ name: 'OpenHoleTE', pos: 'TE', blended: 15 })
+    const rbPlayer = makePlayer({ name: 'AlreadyFullRB', pos: 'RB', blended: 15 })
     state.teams = [nominator]
     state.undrafted = [tePlayer, rbPlayer]
     state.rng = scriptedRng([0.8, 0.5]) // between 0.75 and 0.90 -> need fill

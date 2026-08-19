@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { DraftController } from './useDraftController'
 
-export function AuctionPanel({ controller }: { controller: DraftController }) {
+export function AuctionPanel({ controller, revealPrices }: { controller: DraftController; revealPrices: boolean }) {
   const { phase, currentAuction, standing, humanTeam, autoNominate, raiseBid, passBid, setHumanBid, confirmAndAdvance } =
     controller
   const [maxBidInput, setMaxBidInput] = useState('')
@@ -34,29 +34,19 @@ export function AuctionPanel({ controller }: { controller: DraftController }) {
     <div className="panel center-panel">
       <div className="auction-player-name">{player.name}</div>
       <div className="auction-player-meta">
-        {player.team} · {player.pos} · Tier {player.tier}
+        {player.team} · {player.pos}
+        {player.posRank} · Tier {player.tier}
       </div>
-      <div className="auction-stats">
-        <div className="stat">
-          <span className="stat-label">My rank</span>
-          <span className="stat-value">#{player.myRank}</span>
+      {/* REVISIONS.md change 1: no dollar projection of any kind while
+          bidding unless the human explicitly asks to see one. */}
+      {revealPrices && (
+        <div className="auction-stats">
+          <div className="stat">
+            <span className="stat-label">Blended (market anchor)</span>
+            <span className="stat-value">${player.blended}</span>
+          </div>
         </div>
-        <div className="stat">
-          <span className="stat-label">My value</span>
-          <span className="stat-value">${player.myValue}</span>
-        </div>
-        <div className="stat">
-          <span className="stat-label">Expected</span>
-          <span className="stat-value">${player.expected}</span>
-        </div>
-        <div className="stat">
-          <span className="stat-label">Edge</span>
-          <span className={`stat-value ${player.edge > 0 ? 'good' : player.edge < 0 ? 'warn' : ''}`}>
-            {player.edge > 0 ? '+' : ''}
-            {player.edge}
-          </span>
-        </div>
-      </div>
+      )}
 
       <div className="standing">
         <div className="stat-label">Current high bid</div>

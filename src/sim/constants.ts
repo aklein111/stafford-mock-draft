@@ -5,27 +5,71 @@
 // aren't expected to need tuning, but live here so they're all in one place.
 
 // §3.2 — how much bots privately disagree about a player's value, and a
-// global centering offset on the anchor price. Tuned via `npm run
-// calibrate` (scripts/calibrate.ts) against 200 headless bots-only drafts,
-// per spec §4.3. NOISE_K turned out to have very little effect on the
-// result (see the harness comment for why) and is left at its neutral
-// default; CENTERING=1 was the best of an extensive sweep — it brings the
-// $60+, $40-59, and $1-9 expected-price buckets within the spec's 5%
-// target. The $10-24 and $25-39 buckets remain ~7-12% under even at the
-// best setting found; that gap is structural (needFactor's flex/bench
-// 0.80 discount and the real historical timingFactor curve both apply
-// most heavily to exactly this price range, for a player drafted in the
-// middle third of the draft) and isn't reachable by these two knobs alone
-// without loosening a spec-given constant. Documented in detail in
-// scripts/calibrate.ts.
-export const NOISE_K = 1.0
+// global centering offset on the anchor price.
+//
+// REVISIONS.md Fix 2c: the winner's curse (the clearing price tends
+// toward the *second*-highest of many independent draws, not the mean)
+// scales directly with how much bots disagree — a large NOISE_K makes the
+// highest of 11 draws land far above the average, and every contested
+// player clears high, which is a big part of what was making the top of
+// the draft too expensive. REVISIONS.md says to start low and only raise
+// it if drafts feel too samey: 0.35.
+//
+// CENTERING is still the old pre-REVISIONS value (=1), tuned against a
+// different data schema and before the budget reserve (Fix 2a) and
+// restraint (Fix 2b) existed — it has no remaining justification under
+// the current mechanics and is very likely wrong now. Deliberately left
+// untouched here: REVISIONS.md's order of work puts re-tuning it in step
+// 4, via the auto-calibration script against calibration.targets, not by
+// hand-adjusting it now.
+export const NOISE_K = 0.35
 export const CENTERING = 1
+
+// REVISIONS.md Fix 2b — real managers set a number and stop; a bot's
+// actual walk-away price is its computed valuation times this, not the
+// full valuation, so it stops bidding before it's merely *illegal* to
+// continue rather than at the edge of what it can technically afford.
+export const RESTRAINT_MIN = 0.85
+export const RESTRAINT_MAX = 0.95
 
 // §3.2 — widen noise for players with no real Yahoo AAV to anchor on.
 export const UNMATCHED_YAHOO_NOISE_MULT = 1.5
 
 // §3.4 — roster-need adjustments.
 export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
+
+// REVISIONS.md Change 3, step 5 — room-wide scarcity, not just a bidding
+// team's own need. FLEX_OR_BENCH_NEED_FACTOR only reflects whether *this*
+// team has a dedicated slot open; it doesn't discount at all when few
+// *other* teams are still in the market for the position, which is what
+// actually produces a late-draft bargain in a real auction (fewer real
+// competitors -> lower clearing price, regardless of any one bidder's own
+// desire). The step 5 variance check found this missing: RB/WR/TE showed
+// almost no price/blended response to how many teams still had an
+// eligible slot (correlation ~0), because those positions share
+// FLEX+BENCH so broadly that "eligible" rarely excludes anyone until very
+// late. roomDemandFactor (valuation.ts) scales every bid down as the
+// fraction of still-eligible teams drops, bottoming out at this factor
+// when eligibility is down to a single team.
+export const ROOM_DEMAND_MIN_FACTOR = 0.6
+
+// REVISIONS.md Change 3, step 5 — a real bidding war needs a real chance
+// of happening. Step 4 made generateBudgetPlan fully deterministic (no
+// rng — the old per-slot shuffle was the position-pinning bug it fixed),
+// which had a side effect: an archetype's ceiling for its best pick is now
+// an *identical fixed number every single draft*. Since that ceiling is
+// almost always what determines an elite player's price (see bots.ts),
+// the top of the pool ended up hugging that fixed number every time with
+// almost no variance — measured directly: the pool's best few players
+// landed below blended in 88%+ of simulations even after the ceiling's
+// average level was raised (checkVariance.ts), well past REVISIONS'
+// 80% one-sidedness bar. jitterTopSlot (budgetPlan.ts) re-randomizes each
+// bot's single biggest plan entry within this range every draft, so which
+// bots have real room to compete for the best players on the board varies
+// draft to draft, the way it would for real managers walking in with
+// different plans each time.
+export const PLAN_TOP_JITTER_MIN = 0.5
+export const PLAN_TOP_JITTER_MAX = 2.0
 
 // Not from the spec's §3.4 list — this is for the bench-QB slot added
 // after phase 4 shipped (see roster.ts). Tuned via `npm run calibrate`

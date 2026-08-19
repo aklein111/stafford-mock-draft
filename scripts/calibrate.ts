@@ -1,198 +1,291 @@
-// Calibration harness (spec §4.3): runs many headless bots-only drafts and
-// prints a comparison table against the league's real historical numbers.
+// Calibration harness (REVISIONS.md Fix 2d): runs many headless bots-only
+// drafts and prints a comparison table against the real Stafford draft
+// shape recorded in calibration.targets — the price of the Nth-most-
+// expensive player, what share of all the money the top N players soak up,
+// and how many players land in each price band.
 //
-// The spec is explicit that this shouldn't be derived analytically — the
-// "winner's curse" (the winner of an auction is whoever drew the highest
-// private valuation, so the clearing price tends to run above the true
-// average) is hard to correct for with a formula, so instead we run drafts,
-// measure the gap, and adjust two knobs (NOISE_K and CENTERING) until it
-// closes.
+// REVISIONS.md's framing: this isn't a "clearing prices average out to the
+// right level" problem, it's a "shape" problem — is the draft top-heavy in
+// the way a real one is? So the single knob this script tunes is CENTERING
+// (NOISE_K is fixed at 0.35 as of step 3): it grid-searches CENTERING for a
+// value that puts the top-24 share within 2 points of the 48% target and
+// the $1-2 band within about 5 players of the 53.1 target, prints a
+// before/after table, and — only if it converges — writes the result back
+// into constants.ts.
+//
+// Roster completion is a hard safety rail on the search, not a target of
+// its own: CENTERING is additive (base = blended + centering, see
+// valuation.ts), so pushing it negative shrinks cheap players' valuations
+// toward $0 much faster than expensive ones, and once enough bots value a
+// player at literally $0 nobody bids on it at all — the slot goes unfilled
+// instead of clearing cheap. That does inflate the top-N share (less money
+// competing for the bottom of the pool), but it does it by breaking the
+// draft, not by reproducing the real one's shape. Any CENTERING candidate
+// that drops team roster completion below SAFE_FILL_RATE is excluded from
+// consideration before the two calibration.targets bars are even checked.
 //
 // Usage:
-//   npm run calibrate                                  (uses constants.ts defaults)
-//   npm run calibrate -- --noiseK=0.8 --centering=-4    (try different values)
-//   npm run calibrate -- --drafts=50                    (faster, noisier run)
+//   npm run calibrate                          (grid-search CENTERING)
+//   npm run calibrate -- --drafts=200           (drafts per grid point)
+//   npm run calibrate -- --no-search            (just report the current CENTERING, no tuning)
 
+import { readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { draftData } from '../src/sim/data'
 import { createFullBotDraft } from '../src/sim/draft'
-import {
-  NOISE_K as DEFAULT_NOISE_K,
-  CENTERING as DEFAULT_CENTERING,
-  BACKUP_QB_NEED_FACTOR as DEFAULT_BACKUP_QB_NEED_FACTOR,
-} from '../src/sim/constants'
-import type { Position } from '../src/sim/types'
+import { NOISE_K, CENTERING as DEFAULT_CENTERING } from '../src/sim/constants'
+import type { DraftState } from '../src/sim/draftState'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CONSTANTS_PATH = path.join(__dirname, '../src/sim/constants.ts')
+
+const SAFE_FILL_RATE = 0.97
 
 interface Args {
   drafts: number
-  noiseK: number
-  centering: number
-  backupQbFactor: number
   seed: number
+  search: boolean
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = {
-    drafts: 200,
-    noiseK: DEFAULT_NOISE_K,
-    centering: DEFAULT_CENTERING,
-    backupQbFactor: DEFAULT_BACKUP_QB_NEED_FACTOR,
-    seed: 100000,
-  }
+  const args: Args = { drafts: 200, seed: 200000, search: true }
   for (const raw of argv) {
+    if (raw === '--no-search') {
+      args.search = false
+      continue
+    }
     const [key, value] = raw.replace(/^--/, '').split('=')
     if (value === undefined) continue
     if (key === 'drafts') args.drafts = Number(value)
-    else if (key === 'noiseK') args.noiseK = Number(value)
-    else if (key === 'centering') args.centering = Number(value)
-    else if (key === 'backupQbFactor') args.backupQbFactor = Number(value)
     else if (key === 'seed') args.seed = Number(value)
   }
   return args
 }
 
-const BUCKETS = [
-  { label: '$60+', lo: 60, hi: Infinity },
-  { label: '$40-59', lo: 40, hi: 59 },
-  { label: '$25-39', lo: 25, hi: 39 },
-  { label: '$10-24', lo: 10, hi: 24 },
-  { label: '$1-9', lo: 1, hi: 9 },
-]
+const TOP_N_RANKS = [1, 3, 5, 12, 24, 36, 60, 100]
+const SHARE_NS = [12, 24, 36, 60]
+
+interface Metrics {
+  nth: Record<number, number>
+  share: Record<number, number>
+  bandCounts: number[]
+  meanSpend: number
+  fillRate: number
+}
+
+function runDrafts(centering: number, count: number, seed: number): DraftState[] {
+  const states: DraftState[] = []
+  for (let i = 0; i < count; i++) {
+    states.push(createFullBotDraft(draftData, seed + i, undefined, { centering }))
+  }
+  return states
+}
+
+function computeMetrics(states: DraftState[]): Metrics {
+  const bands = draftData.calibration.targets.priceBands
+  const nthSums: Record<number, number> = {}
+  const shareSums: Record<number, number> = {}
+  const bandSums = bands.map(() => 0)
+  let totalSpend = 0
+  let teamCount = 0
+  let filledTeams = 0
+
+  for (const state of states) {
+    const prices = state.drafted.map((d) => d.price).sort((a, b) => b - a)
+    const total = prices.reduce((a, b) => a + b, 0)
+    totalSpend += total
+
+    for (const team of state.teams) {
+      teamCount += 1
+      if (team.slots.every((s) => s.filled)) filledTeams += 1
+    }
+
+    for (const n of TOP_N_RANKS) {
+      nthSums[n] = (nthSums[n] ?? 0) + (prices[n - 1] ?? 0)
+    }
+    for (const n of SHARE_NS) {
+      const topSum = prices.slice(0, n).reduce((a, b) => a + b, 0)
+      shareSums[n] = (shareSums[n] ?? 0) + (total > 0 ? topSum / total : 0)
+    }
+    for (const price of prices) {
+      const idx = bands.findIndex((b) => price >= b.low && (b.high === null || price <= b.high))
+      if (idx >= 0) bandSums[idx] += 1
+    }
+  }
+
+  const n = states.length
+  const nth: Record<number, number> = {}
+  for (const k of TOP_N_RANKS) nth[k] = nthSums[k] / n
+  const share: Record<number, number> = {}
+  for (const k of SHARE_NS) share[k] = shareSums[k] / n
+
+  return {
+    nth,
+    share,
+    bandCounts: bandSums.map((s) => s / n),
+    meanSpend: totalSpend / n,
+    fillRate: filledTeams / teamCount,
+  }
+}
 
 function pad(s: string, width: number): string {
   return s.length >= width ? s : ' '.repeat(width - s.length) + s
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2))
-  const totalSlots = draftData.meta.teams * draftData.meta.rosterSpots
+function printTable(centering: number, drafts: number, m: Metrics) {
+  const targets = draftData.calibration.targets
 
-  console.log(
-    `Running ${args.drafts} headless bots-only drafts (NOISE_K=${args.noiseK}, CENTERING=${args.centering}, BACKUP_QB_NEED_FACTOR=${args.backupQbFactor})...\n`,
-  )
+  console.log(`\n--- CENTERING=${centering}  (${drafts} drafts, NOISE_K=${NOISE_K}) ---`)
+  console.log(`roster completion: ${(m.fillRate * 100).toFixed(1)}% of teams filled all slots`)
 
-  const bucketSums = BUCKETS.map(() => ({ n: 0, sumExpected: 0, sumPrice: 0 }))
-  let totalTeamSpend = 0
-  let totalTeamCount = 0
-  let fullRosterTeams = 0
-  let dollarSpotCount = 0
-  let totalSpots = 0
-  const posCounts: Record<Position, number> = { QB: 0, RB: 0, WR: 0, TE: 0, DEF: 0 }
-  const moneyClockObserved = new Array(11).fill(0)
-
-  for (let i = 0; i < args.drafts; i++) {
-    const seed = args.seed + i
-    const state = createFullBotDraft(draftData, seed, undefined, {
-      noiseK: args.noiseK,
-      centering: args.centering,
-      backupQbFactor: args.backupQbFactor,
-    })
-
-    for (const team of state.teams) {
-      totalTeamSpend += team.spent
-      totalTeamCount += 1
-      if (team.slots.every((s) => s.filled)) fullRosterTeams += 1
-    }
-
-    const picksInOrder = [...state.drafted].sort((a, b) => a.pickNumber - b.pickNumber)
-    const totalDraftSpend = picksInOrder.reduce((s, d) => s + d.price, 0)
-
-    let runningSpend = 0
-    let pickIdx = 0
-    for (let c = 0; c <= 10; c++) {
-      const targetPicks = Math.round((c / 10) * picksInOrder.length)
-      while (pickIdx < targetPicks) {
-        runningSpend += picksInOrder[pickIdx].price
-        pickIdx += 1
-      }
-      moneyClockObserved[c] += totalDraftSpend > 0 ? runningSpend / totalDraftSpend : 0
-    }
-
-    for (const pick of picksInOrder) {
-      totalSpots += 1
-      if (pick.price <= 2) dollarSpotCount += 1
-      posCounts[pick.player.pos] += 1
-
-      const bucket = BUCKETS.find((b) => pick.player.expected >= b.lo && pick.player.expected <= b.hi)
-      if (bucket) {
-        const idx = BUCKETS.indexOf(bucket)
-        bucketSums[idx].n += 1
-        bucketSums[idx].sumExpected += pick.player.expected
-        bucketSums[idx].sumPrice += pick.price
-      }
-    }
+  console.log('\nNth most expensive player:')
+  console.log(pad('N', 6) + pad('simulated', 12) + pad('target', 10) + pad('delta', 10))
+  for (const k of TOP_N_RANKS) {
+    const sim = m.nth[k]
+    const target = targets.nthMostExpensive[String(k)]
+    console.log(pad(String(k), 6) + pad(sim.toFixed(1), 12) + pad(target.toFixed(1), 10) + pad((sim - target).toFixed(1), 10))
   }
 
-  console.log('=== Clearing price vs expected, by bucket (spec §4.3, target: within 5%) ===')
-  console.log(pad('bucket', 8) + pad('n', 7) + pad('meanExpected', 14) + pad('meanPrice', 12) + pad('ratio', 8) + '  within5%')
-  let worstDelta = 0
-  for (let i = 0; i < BUCKETS.length; i++) {
-    const { n, sumExpected, sumPrice } = bucketSums[i]
-    if (n === 0) {
-      console.log(`${pad(BUCKETS[i].label, 8)}  no picks in this bucket`)
-      continue
-    }
-    const meanExpected = sumExpected / n
-    const meanPrice = sumPrice / n
-    const ratio = meanPrice / meanExpected
-    const delta = Math.abs(ratio - 1)
-    worstDelta = Math.max(worstDelta, delta)
+  console.log('\nTop-N share of pool:')
+  console.log(pad('N', 6) + pad('simulated', 12) + pad('target', 10) + pad('delta(pts)', 12))
+  for (const k of SHARE_NS) {
+    const sim = m.share[k]
+    const target = targets.topNShareOfPool[String(k)]
     console.log(
-      pad(BUCKETS[i].label, 8) +
-        pad(String(n), 7) +
-        pad(meanExpected.toFixed(1), 14) +
-        pad(meanPrice.toFixed(1), 12) +
-        pad(ratio.toFixed(2), 8) +
-        '  ' +
-        (delta <= 0.05 ? 'yes' : 'NO'),
+      pad(String(k), 6) +
+        pad((sim * 100).toFixed(1) + '%', 12) +
+        pad((target * 100).toFixed(1) + '%', 10) +
+        pad(((sim - target) * 100).toFixed(1), 12),
     )
   }
 
-  console.log('\n=== Total spend per team (spec §8, target: $200) ===')
-  console.log(`mean spend/team: $${(totalTeamSpend / totalTeamCount).toFixed(2)}`)
-  console.log(`teams with all 14 slots filled: ${fullRosterTeams}/${totalTeamCount}`)
+  console.log('\nPrice bands (players per draft):')
+  console.log(pad('band', 10) + pad('simulated', 12) + pad('target', 10) + pad('delta', 10))
+  targets.priceBands.forEach((band, i) => {
+    const label = band.high === null ? `$${band.low}+` : `$${band.low}-${band.high}`
+    const sim = m.bandCounts[i]
+    console.log(pad(label, 10) + pad(sim.toFixed(1), 12) + pad(band.playersPerDraft.toFixed(1), 10) + pad((sim - band.playersPerDraft).toFixed(1), 10))
+  })
 
-  console.log('\n=== Money clock (spec §4.1), cumulative spend fraction by decile of picks ===')
-  console.log(pad('decile', 8) + pad('observed', 12) + pad('target', 10))
-  for (let c = 0; c <= 10; c++) {
-    const observed = moneyClockObserved[c] / args.drafts
-    const target = draftData.calibration.moneyClock[c]
-    console.log(pad(String(c), 8) + pad(observed.toFixed(3), 12) + pad(target !== undefined ? target.toFixed(3) : '-', 10))
+  console.log(`\nmean total spend/draft: $${m.meanSpend.toFixed(0)} (of $${draftData.meta.teams * draftData.meta.budget})`)
+}
+
+function top24Gap(m: Metrics): number {
+  return Math.abs(m.share[24] - draftData.calibration.targets.topNShareOfPool['24']) * 100
+}
+
+function dollarBandIndex(): number {
+  return draftData.calibration.targets.priceBands.findIndex((b) => b.low === 1 && b.high === 2)
+}
+
+function dollarGap(m: Metrics): number {
+  const idx = dollarBandIndex()
+  return Math.abs(m.bandCounts[idx] - draftData.calibration.targets.priceBands[idx].playersPerDraft)
+}
+
+function isSafe(m: Metrics): boolean {
+  return m.fillRate >= SAFE_FILL_RATE
+}
+
+// Convergence per REVISIONS.md Fix 2d: top-24 share within 2 points of 48%,
+// and the $1-2 band within about 5 of 53 — plus the roster-completion
+// safety rail described up top.
+function isConverged(m: Metrics): boolean {
+  return isSafe(m) && top24Gap(m) <= 2 && dollarGap(m) <= 5
+}
+
+interface Candidate {
+  centering: number
+  metrics: Metrics
+}
+
+// Grid search rather than a gradient method: the earlier exploration for
+// this step found the fill-rate cliff sits right next to CENTERING=0 (99%
+// filled at -0.5, 30% filled at -1, <1% by -5), so a method that chases the
+// top-24 share alone (which keeps improving as roster completion collapses)
+// will walk straight off that cliff. A bounded grid plus the explicit
+// isSafe() filter is the straightforward way to never evaluate "best" over
+// a candidate that broke the draft to get there.
+function gridSearch(drafts: number, seed: number): Candidate[] {
+  const candidates: Candidate[] = []
+  for (let step = -12; step <= 12; step += 1) {
+    const centering = Math.round(step * 0.25 * 100) / 100
+    const states = runDrafts(centering, drafts, seed)
+    const metrics = computeMetrics(states)
+    candidates.push({ centering, metrics })
+    console.log(
+      `  CENTERING=${pad(centering.toFixed(2), 6)}  fill=${pad((metrics.fillRate * 100).toFixed(1) + '%', 7)}` +
+        `  top24Share=${pad((metrics.share[24] * 100).toFixed(1) + '%', 7)} (gap ${top24Gap(metrics).toFixed(1)}pt)` +
+        `  $1-2=${pad(metrics.bandCounts[dollarBandIndex()].toFixed(1), 6)} (gap ${dollarGap(metrics).toFixed(1)})` +
+        `  ${isSafe(metrics) ? '' : 'UNSAFE (roster completion broken)'}`,
+    )
+  }
+  return candidates
+}
+
+function pickBest(candidates: Candidate[]): Candidate {
+  const safe = candidates.filter((c) => isSafe(c.metrics))
+  const pool = safe.length > 0 ? safe : candidates
+  // Normalize each gap by its convergence bar so the two targets are
+  // weighted roughly evenly, then take the best combined score.
+  const score = (m: Metrics) => top24Gap(m) / 2 + dollarGap(m) / 5
+  return pool.reduce((a, b) => (score(a.metrics) <= score(b.metrics) ? a : b))
+}
+
+function updateConstantsFile(newCentering: number) {
+  const src = readFileSync(CONSTANTS_PATH, 'utf8')
+  const updated = src.replace(/export const CENTERING = -?\d+(\.\d+)?/, `export const CENTERING = ${newCentering}`)
+  if (updated === src) {
+    console.log('\n(could not find `export const CENTERING = ...` to update in constants.ts — left it untouched)')
+    return
+  }
+  writeFileSync(CONSTANTS_PATH, updated)
+  console.log(`\nUpdated src/sim/constants.ts: CENTERING = ${newCentering}`)
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2))
+
+  console.log(`Running calibration against calibration.targets (${args.drafts} drafts/measurement, NOISE_K=${NOISE_K})`)
+
+  const baselineStates = runDrafts(DEFAULT_CENTERING, args.drafts, args.seed)
+  const baselineMetrics = computeMetrics(baselineStates)
+  printTable(DEFAULT_CENTERING, args.drafts, baselineMetrics)
+  console.log(`\nBaseline converged: ${isConverged(baselineMetrics) ? 'yes' : 'no'}`)
+
+  if (!args.search) return
+
+  if (isConverged(baselineMetrics)) {
+    console.log('\nAlready within target — no search needed.')
+    return
   }
 
-  console.log('\n=== $1-2 roster spots (spec §8, target: ~4.4/team, ~31.4% of all spots) ===')
-  const dollarSpotFraction = totalSpots > 0 ? dollarSpotCount / totalSpots : 0
-  console.log(`observed: ${(dollarSpotFraction * 100).toFixed(1)}%  (~${(dollarSpotFraction * 14).toFixed(1)}/team)`)
+  console.log(`\n=== Grid search over CENTERING (${args.drafts} drafts/point) ===`)
+  const candidates = gridSearch(args.drafts, args.seed + 500000)
+  const best = pickBest(candidates)
 
-  console.log('\n=== Position counts per draft (spec §8, target: calibration.avgRosteredByPos) ===')
-  for (const pos of Object.keys(posCounts) as Position[]) {
-    const observedPerDraft = posCounts[pos] / args.drafts
-    const target = draftData.calibration.avgRosteredByPos[pos]
-    console.log(`${pos}: observed ${observedPerDraft.toFixed(1)}   target ${target}`)
-  }
+  console.log(`\n=== Final validation run (200 drafts) at best candidate CENTERING=${best.centering} ===`)
+  const finalStates = runDrafts(best.centering, 200, args.seed + 900000)
+  const finalMetrics = computeMetrics(finalStates)
+  printTable(best.centering, 200, finalMetrics)
 
-  console.log(
-    `\nWorst bucket ratio deviation from 1.0: ${(worstDelta * 100).toFixed(1)}%  ` +
-      (worstDelta <= 0.05 ? '(within 5% target)' : '(NOT within 5% target)'),
-  )
-  console.log(`totalSlots (for reference): ${totalSlots}`)
+  const finalConverged = isConverged(finalMetrics)
+  console.log(`\nFinal validation converged (both targets + roster-completion rail): ${finalConverged ? 'yes' : 'no'}`)
 
-  if (worstDelta > 0.05) {
-    console.log(`
---- Known gap (as of the current tuned constants) ---
-The $25-39 and $10-24 buckets sit ~7-12% under expected price even at the
-best NOISE_K/CENTERING combination found (an extensive sweep is in the commit
-history). Diagnosis: those buckets are dominated by RB/WR/TE picks bought
-in the middle third of the draft to fill FLEX/BENCH rather than a
-dedicated starter slot, and two spec-mandated numbers both discount
-exactly that combination at once - needFactor's flex/bench 0.80 (§3.4)
-and the real historical timingFactor curve's mid-draft dip (§4.1). Each
-is applied faithfully to the letter of the spec on its own; it's their
-overlap on this specific segment that a *global* NOISE_K/CENTERING can't
-reach without distorting the buckets that are already within target.
-Closing this the rest of the way would mean loosening one of those
-spec-given numbers (most plausibly the 0.80 flex/bench factor), which
-felt like a call for the league owner, not something to silently change.
-`)
+  if (finalConverged) {
+    updateConstantsFile(best.centering)
+  } else {
+    console.log(
+      `\nNot updating constants.ts automatically. Best safe CENTERING found: ${best.centering} ` +
+        `(top-24 share gap ${top24Gap(finalMetrics).toFixed(1)}pt, $1-2 band gap ${dollarGap(finalMetrics).toFixed(1)}, ` +
+        `roster completion ${(finalMetrics.fillRate * 100).toFixed(1)}%).\n` +
+        `If the top-24 share gap is the blocker: within the CENTERING range that keeps roster completion above ` +
+        `${(SAFE_FILL_RATE * 100).toFixed(0)}%, the top-24 share does not appear to reach the 48% target at all — see the grid above. ` +
+        `Pushing CENTERING further negative does raise it, but only by making bots value cheap players at $0, ` +
+        `so nobody bids and those roster slots go unfilled instead of clearing cheap. That's a different knob's ` +
+        `problem (or a deliberate spec tradeoff), not something this script should paper over by picking an unsafe value.`,
+    )
   }
 }
 

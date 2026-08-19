@@ -1,5 +1,6 @@
 import type { DraftController } from './useDraftController'
 import { ARCHETYPE_LABELS } from '../sim/botTraits'
+import { BUDGET_PLAN_LABELS } from '../sim/budgetPlan'
 import type { Position } from '../sim/types'
 
 const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE', 'DEF']
@@ -9,17 +10,17 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
 
   const myPicks = humanTeam.slots.filter((s) => s.filled).map((s) => s.filled!)
 
-  const spendByPos = new Map<Position, { spent: number; expected: number }>()
-  for (const pos of POSITIONS) spendByPos.set(pos, { spent: 0, expected: 0 })
+  const spendByPos = new Map<Position, { spent: number; blended: number }>()
+  for (const pos of POSITIONS) spendByPos.set(pos, { spent: 0, blended: 0 })
   for (const pick of myPicks) {
     const row = spendByPos.get(pick.player.pos)!
     row.spent += pick.price
-    row.expected += pick.player.expected
+    row.blended += pick.player.blended
   }
 
-  const byEdge = [...myPicks].sort((a, b) => a.player.expected - a.price - (b.player.expected - b.price))
-  const steals = byEdge.slice(0, 5) // paid well under expected
-  const reaches = [...byEdge].reverse().slice(0, 5) // paid well over expected
+  const byValue = [...myPicks].sort((a, b) => a.player.blended - a.price - (b.player.blended - b.price))
+  const steals = byValue.slice(0, 5) // paid well under blended
+  const reaches = [...byValue].reverse().slice(0, 5) // paid well over blended
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto', color: '#e5e7eb' }}>
@@ -35,25 +36,25 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
       </div>
 
       <section style={{ marginBottom: '2rem' }}>
-        <h2>Your spend by position vs. expected</h2>
+        <h2>Your spend by position vs. blended (market anchor)</h2>
         <table>
           <thead>
             <tr>
               <th>Position</th>
               <th>You spent</th>
-              <th>Expected (for these picks)</th>
+              <th>Blended (for these picks)</th>
               <th>Delta</th>
             </tr>
           </thead>
           <tbody>
             {POSITIONS.map((pos) => {
               const row = spendByPos.get(pos)!
-              const delta = row.spent - row.expected
+              const delta = row.spent - row.blended
               return (
                 <tr key={pos}>
                   <td>{pos}</td>
                   <td>${row.spent}</td>
-                  <td>${row.expected}</td>
+                  <td>${row.blended}</td>
                   <td style={{ color: delta > 0 ? '#f59e0b' : delta < 0 ? '#34d399' : undefined }}>
                     {delta > 0 ? '+' : ''}
                     {delta}
@@ -69,27 +70,27 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
         <h2>Biggest steals / biggest reaches</h2>
         <div style={{ display: 'flex', gap: '2rem' }}>
           <div style={{ flex: 1 }}>
-            <h3>Steals (paid under expected)</h3>
+            <h3>Steals (paid under blended)</h3>
             {steals.map((p) => (
               <div className="slot-row" key={p.pickNumber}>
                 <span>
                   {p.player.name} ({p.player.pos})
                 </span>
                 <span style={{ color: '#34d399' }}>
-                  ${p.price} vs ${p.player.expected}
+                  ${p.price} vs ${p.player.blended}
                 </span>
               </div>
             ))}
           </div>
           <div style={{ flex: 1 }}>
-            <h3>Reaches (paid over expected)</h3>
+            <h3>Reaches (paid over blended)</h3>
             {reaches.map((p) => (
               <div className="slot-row" key={p.pickNumber}>
                 <span>
                   {p.player.name} ({p.player.pos})
                 </span>
                 <span style={{ color: '#f59e0b' }}>
-                  ${p.price} vs ${p.player.expected}
+                  ${p.price} vs ${p.player.blended}
                 </span>
               </div>
             ))}
@@ -125,11 +126,12 @@ export function ResultsScreen({ controller }: { controller: DraftController }) {
               <div key={bot.teamId} style={{ background: '#161a22', borderRadius: '6px', padding: '0.75rem' }}>
                 <div style={{ fontWeight: 600 }}>{team.name}</div>
                 <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  {ARCHETYPE_LABELS[bot.archetype]}
+                  {ARCHETYPE_LABELS[bot.archetype]} · {BUDGET_PLAN_LABELS[bot.budgetPlanArchetype]}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#9ca3af' }}>
-                  aggression {bot.traits.aggression.toFixed(2)} · star pref {bot.traits.starPreference.toFixed(2)} ·
-                  discipline decay {bot.traits.disciplineDecay.toFixed(2)} · noise {bot.traits.noiseScale.toFixed(2)}
+                  aggression {bot.traits.aggression.toFixed(2)} · restraint {bot.traits.restraint.toFixed(2)} · star
+                  pref {bot.traits.starPreference.toFixed(2)} · discipline decay{' '}
+                  {bot.traits.disciplineDecay.toFixed(2)} · noise {bot.traits.noiseScale.toFixed(2)}
                 </div>
               </div>
             )

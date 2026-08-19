@@ -4,6 +4,7 @@
 import type { Position } from './types'
 import type { RNG } from './rng'
 import { randRange } from './rng'
+import { RESTRAINT_MAX, RESTRAINT_MIN } from './constants'
 
 export interface BotTraits {
   aggression: number // 0.90-1.10, flat multiplier on every valuation
@@ -11,6 +12,10 @@ export interface BotTraits {
   starPreference: number // -0.10 to +0.10
   disciplineDecay: number // 0.5-1.5
   noiseScale: number // 0.7-1.3
+  // REVISIONS.md Fix 2b — a bot's walk-away price is valuation x
+  // restraint, not the full valuation: real managers set a number and
+  // stop rather than bidding until it's merely illegal to continue.
+  restraint: number // 0.85-0.95
 }
 
 const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE', 'DEF']
@@ -70,6 +75,7 @@ function traitsForArchetype(archetype: Archetype, rng: RNG): BotTraits {
     starPreference: randRange(rng, -0.1, 0.1),
     disciplineDecay: randRange(rng, 0.5, 1.5),
     noiseScale: randRange(rng, 0.7, 1.3),
+    restraint: randRange(rng, RESTRAINT_MIN, RESTRAINT_MAX),
   }
 }
 

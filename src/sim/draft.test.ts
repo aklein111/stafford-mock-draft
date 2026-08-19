@@ -33,10 +33,10 @@ describe('full draft with real bots (spec §3, end to end)', () => {
     expect(a.log).not.toEqual(b.log)
   })
 
-  it('clearing prices roughly track `expected`: the top bucket costs far more than the bottom bucket', () => {
+  it('clearing prices roughly track `blended`: the top bucket costs far more than the bottom bucket', () => {
     const state = createFullBotDraft(draftData, 55)
-    const expensive = state.drafted.filter((d) => d.player.expected >= 40)
-    const cheap = state.drafted.filter((d) => d.player.expected <= 9)
+    const expensive = state.drafted.filter((d) => d.player.blended >= 40)
+    const cheap = state.drafted.filter((d) => d.player.blended <= 9)
     expect(expensive.length).toBeGreaterThan(0)
     expect(cheap.length).toBeGreaterThan(0)
     const avg = (picks: typeof expensive) => picks.reduce((s, d) => s + d.price, 0) / picks.length
