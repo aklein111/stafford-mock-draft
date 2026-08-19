@@ -131,6 +131,15 @@ export const BACKUP_QB_NEED_FACTOR = 0.5
 // roomDemand, inflation, lockIn) down to a $2 ceiling for one position
 // without also flattening it for everyone else.
 export const DEF_MAX_BID = 2
+
+// User report: individual bots (Loewy specifically) were hoarding tight
+// ends — TE is flex/bench-eligible, so nothing previously stopped a bot
+// from stacking three, four, even five of them across its bench once its
+// one dedicated TE slot filled. A real manager doesn't do that; TE is a
+// thin position and a second one is bye-week/matchup insurance at most.
+// Applies to bots only, same as every other bidding-behaviour knob here —
+// a human player can still draft as many as they want.
+export const BOT_MAX_TE = 2
 export const LATE_DRAFT_SLOTS_THRESHOLD = 4
 export const LATE_DRAFT_MAX_BOOST = 0.25 // "up to 1.25"
 export const RICH_PER_SLOT_THRESHOLD = 8
