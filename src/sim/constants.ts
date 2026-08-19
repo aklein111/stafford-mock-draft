@@ -49,9 +49,23 @@ export const FLEX_OR_BENCH_NEED_FACTOR = 0.8
 // eligible slot (correlation ~0), because those positions share
 // FLEX+BENCH so broadly that "eligible" rarely excludes anyone until very
 // late. roomDemandFactor (valuation.ts) scales every bid down as the
-// fraction of still-eligible teams drops, bottoming out at this factor
-// when eligibility is down to a single team.
-export const ROOM_DEMAND_MIN_FACTOR = 0.6
+// room's average demand weight drops, bottoming out at this factor when
+// no team has any real interest left.
+//
+// Retuned up from 0.6 after a later investigation into teams underspending
+// overall: 62.5% of all RB/WR bid evaluations are for a non-dedicated
+// (FLEX/BENCH) slot — teams need only 2 dedicated RB and 2 dedicated WR
+// each, but have up to 7 more FLEX/BENCH slots that take either position —
+// and every one of those was taking *both* FLEX_OR_BENCH_NEED_FACTOR's
+// discount and this one, compounding to ~0.64x on average (measured
+// directly) well before restraint/inflation/etc. even applied. 0.6 was
+// tuned by itself, without accounting for that overlap. 0.85 keeps genuine
+// late-draft scarcity bargains intact (measured: a position down to one
+// interested team still crashes to 40-60% of blended) while no longer
+// doubling up with needFactor's own discount on every ordinary FLEX/BENCH
+// pick, which was the largest single driver of the overall underspend
+// (~87% -> ~90% of the $2400 pool spent, at 200-draft samples).
+export const ROOM_DEMAND_MIN_FACTOR = 0.85
 
 // REVISIONS.md Change 3, step 5 — a real bidding war needs a real chance
 // of happening. Step 4 made generateBudgetPlan fully deterministic (no
