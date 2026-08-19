@@ -1,13 +1,15 @@
-// Drives an interactive draft: bot-only nominations and auctions resolve
-// automatically (immediately at "instant" speed, or paced by a timer at
-// 1x/4x); the human's own nomination turn and any auction they're
-// eligible to bid in pause for input — unless the player is unwatched and
-// bidding has already passed the human's own value for them (spec §5
-// Pacing: watch list auto-skip). See src/sim/humanAuction.ts for how a
-// human's bid is combined with precomputed bot bids, and
-// MOCK_DRAFT_SPEC.md §5 for what the resulting screen needs to show.
+// Drives an interactive draft, one nomination at a time: whoever's turn it
+// is nominates a player, every eligible team's bid is on the table, and
+// the human always sees the auction and must hit Continue to move on —
+// whether they nominated it, a bot did, or nobody ends up bidding at all.
+// This is an auction, not a snake draft: every team has a real look at
+// every player and a real chance to bid on every single one, so nothing
+// resolves or advances without the human's own action. See
+// src/sim/humanAuction.ts for how a human's bid is combined with
+// precomputed bot bids, and MOCK_DRAFT_SPEC.md §5 for what the resulting
+// screen needs to show.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { DraftData, Player } from '../sim/types'
 import { createInitialState, type DraftState } from '../sim/draftState'
 import { createBotStates, createRealBotMaxBidFn, type BotState } from '../sim/bots'
@@ -18,7 +20,6 @@ import { playerKey } from '../sim/valuation'
 import { canBidOnPositionSafely, isRosterFull, legalMaxBid, type Team } from '../sim/roster'
 
 export type DraftPhase = 'nominating' | 'auctioning' | 'complete'
-export type Speed = 'instant' | '1x' | '4x'
 
 export interface CurrentAuction {
   player: Player
@@ -41,7 +42,9 @@ export interface DraftController {
   currentAuction: CurrentAuction | null
   standing: ReturnType<typeof currentStanding>
   seed: number
-  speed: Speed
+  // Purely a bookmark for the player pool table (star + "watch only"
+  // filter) — no longer affects draft pacing. Every auction pauses
+  // regardless of whether the player is watched.
   watchList: Set<string>
   canUndo: boolean
   nominatePlayer: (player: Player) => void
@@ -51,15 +54,12 @@ export interface DraftController {
   passBid: () => void
   confirmAndAdvance: () => void
   toggleWatch: (player: Player) => void
-  setSpeed: (speed: Speed) => void
   undoLastPick: () => void
   restart: (seed?: number) => void
 }
 
 const HUMAN_TEAM_ID = 1
 const WATCHLIST_KEY = 'stafford-mock-draft:watchlist'
-const SPEED_KEY = 'stafford-mock-draft:speed'
-const SPEED_DELAY_MS: Record<Speed, number> = { instant: 0, '4x': 120, '1x': 500 }
 
 interface PickSnapshot {
   pickNumberBefore: number
@@ -77,7 +77,6 @@ interface ControllerInternals {
   phase: DraftPhase
   currentAuction: CurrentAuction | null
   lastPick: PickSnapshot | null
-  pendingAutoPlay: boolean
   seed: number
 }
 
@@ -88,11 +87,6 @@ function loadWatchList(): Set<string> {
   } catch {
     return new Set()
   }
-}
-
-function loadSpeed(): Speed {
-  const raw = localStorage.getItem(SPEED_KEY)
-  return raw === '1x' || raw === '4x' || raw === 'instant' ? raw : 'instant'
 }
 
 function createInternals(data: DraftData, seed: number, humanName: string): ControllerInternals {
@@ -109,15 +103,14 @@ function createInternals(data: DraftData, seed: number, humanName: string): Cont
     phase: 'nominating',
     currentAuction: null,
     lastPick: null,
-    pendingAutoPlay: false,
     seed,
   }
 }
 
 // nextNominator() mutates state.nominationPointer as a side effect of
 // finding the next eligible team. Peeking at whose turn it is (to decide
-// whether to pause for the human) without committing to it needs the same
-// search logic minus that mutation.
+// whether it's the human's own nomination) without committing to it needs
+// the same search logic minus that mutation.
 function peekNextNominatorId(state: DraftState): number | null {
   const n = state.nominationOrder.length
   for (let i = 0; i < n; i++) {
@@ -129,47 +122,30 @@ function peekNextNominatorId(state: DraftState): number | null {
   return null
 }
 
-// Watch-list auto-skip (spec §5 Pacing): a starred player always pauses;
-// an unstarred one only pauses while the bots' own bidding hasn't yet
-// passed what the player is worth. REVISIONS.md change 1 removed the
-// human's personal valuation (`myValue`) this was originally keyed on —
-// there's no "my max" left to compare against — so this now uses
-// `blended`, the market's own anchor price, as the next-best stand-in:
-// skip once the room has bid past what the market itself thinks the
-// player is worth. REVISIONS.md doesn't address the watch list directly;
-// this is a judgment call to keep the feature working, not a spec'd
-// number.
-function shouldPauseForHuman(player: Player, botBids: Bid[], humanTeam: Team, watchList: Set<string>): boolean {
-  if (watchList.has(playerKey(player))) return true
-  const baseline = currentStanding(botBids, humanTeam, 0)
-  if (!baseline) return true
-  return baseline.price <= player.blended
-}
-
-type StepStatus = 'advanced' | 'input-needed'
-
-// Processes exactly one bot nomination + auction, or determines the human
-// needs to act (their nomination turn, an auction worth pausing for, or
-// the draft is over). Never loops — callers decide how many times to
-// call this and how fast.
-function advanceOneBotStep(c: ControllerInternals, watchList: Set<string>): StepStatus {
+// Sets up whatever needs the human's attention next: the draft being over,
+// the human's own nomination turn, or the auction for whatever a bot just
+// nominated. Every nomination ends up here and stays here until the human
+// calls confirmAndAdvance — there is no automatic resolution, and nothing
+// ever skips ahead on its own. That's the actual mechanic of an auction
+// draft: every team gets a real look at every player.
+function setupNextStep(c: ControllerInternals): void {
   if (isDraftComplete(c.state)) {
     c.phase = 'complete'
     c.currentAuction = null
-    return 'input-needed'
+    return
   }
 
   const nominatorId = peekNextNominatorId(c.state)
   if (nominatorId === null) {
     c.phase = 'complete'
     c.currentAuction = null
-    return 'input-needed'
+    return
   }
 
   if (nominatorId === HUMAN_TEAM_ID) {
     c.phase = 'nominating'
     c.currentAuction = null
-    return 'input-needed'
+    return
   }
 
   const nominationPointerBefore = c.state.nominationPointer
@@ -178,58 +154,15 @@ function advanceOneBotStep(c: ControllerInternals, watchList: Set<string>): Step
   if (!player) {
     c.phase = 'complete'
     c.currentAuction = null
-    return 'input-needed'
+    return
   }
 
   const humanTeam = c.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
   const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID)
   const humanEligible = !isRosterFull(humanTeam) && canBidOnPositionSafely(c.state.teams, c.state.undrafted, humanTeam, player.pos)
 
-  if (humanEligible && shouldPauseForHuman(player, botBids, humanTeam, watchList)) {
-    c.phase = 'auctioning'
-    c.currentAuction = { player, botBids, humanBid: 0, humanEligible: true, bidLog: [], nominationPointerBefore }
-    return 'input-needed'
-  }
-
-  const snapshot: PickSnapshot = {
-    pickNumberBefore: c.state.pickNumber,
-    nominationPointerBefore,
-    logLengthBefore: c.state.log.length,
-    draftedLengthBefore: c.state.drafted.length,
-    player,
-  }
-  const result = finalizeAuction(c.state, botBids, humanTeam, 0)
-  applyAuctionResult(c.state, player, result)
-  // Only a real fill is undoable — a "no bidders" outcome doesn't touch
-  // the roster or remove the player from the pool, so there's nothing to
-  // reverse (and reversing it would wrongly re-add a player who was never
-  // actually removed).
-  if (result?.winner) c.lastPick = snapshot
-  return 'advanced'
-}
-
-// Loops advanceOneBotStep to completion, synchronously. Used for "instant"
-// speed and anywhere else a jump straight to the next input-needed point
-// is wanted (initial load, undo, restart) regardless of the speed setting.
-function advanceUntilInputNeeded(c: ControllerInternals, watchList: Set<string>) {
-  // A safety net against an unexpected infinite loop, not a normal
-  // stopping condition — matches runFullDraft's maxSteps guard.
-  for (let guard = 0; guard < 10000; guard++) {
-    if (advanceOneBotStep(c, watchList) === 'input-needed') return
-  }
-}
-
-// Resumes auto-play after an action, respecting the speed setting: instant
-// jumps straight to the next input-needed point; 1x/4x take one step now
-// and flag that more remain, for the auto-play effect to continue on a
-// timer (so the human can actually watch bot picks happen).
-function resumeAutoAdvance(c: ControllerInternals, watchList: Set<string>, speed: Speed) {
-  if (speed === 'instant') {
-    advanceUntilInputNeeded(c, watchList)
-    c.pendingAutoPlay = false
-  } else {
-    c.pendingAutoPlay = advanceOneBotStep(c, watchList) === 'advanced'
-  }
+  c.phase = 'auctioning'
+  c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore }
 }
 
 export function useDraftController(data: DraftData, seed: number, humanName = 'You'): DraftController {
@@ -237,28 +170,13 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
   const bump = useCallback(() => forceRender((n) => n + 1), [])
 
   const [watchList, setWatchList] = useState<Set<string>>(loadWatchList)
-  const [speed, setSpeedState] = useState<Speed>(loadSpeed)
 
   const ref = useRef<ControllerInternals | null>(null)
   if (ref.current === null) {
     ref.current = createInternals(data, seed, humanName)
-    advanceUntilInputNeeded(ref.current, watchList)
+    setupNextStep(ref.current)
   }
   const ctrl = ref.current
-
-  // Auto-play: while a bot-only chain of picks is still pending (1x/4x
-  // speed), keep stepping on a timer. Runs after every render so each
-  // completed step schedules the next one; cleans up its own timer if the
-  // component re-renders for any other reason first.
-  useEffect(() => {
-    const c = ref.current!
-    if (!c.pendingAutoPlay) return
-    const timer = setTimeout(() => {
-      c.pendingAutoPlay = advanceOneBotStep(c, watchList) === 'advanced'
-      bump()
-    }, SPEED_DELAY_MS[speed])
-    return () => clearTimeout(timer)
-  })
 
   const nominatePlayer = useCallback(
     (player: Player) => {
@@ -327,9 +245,9 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
     if (result?.winner) c.lastPick = snapshot
     c.currentAuction = null
 
-    resumeAutoAdvance(c, watchList, speed)
+    setupNextStep(c)
     bump()
-  }, [bump, watchList, speed])
+  }, [bump])
 
   const toggleWatch = useCallback((player: Player) => {
     setWatchList((prev) => {
@@ -344,15 +262,6 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
       }
       return next
     })
-  }, [])
-
-  const setSpeed = useCallback((next: Speed) => {
-    setSpeedState(next)
-    try {
-      localStorage.setItem(SPEED_KEY, next)
-    } catch {
-      // ignore — speed just won't persist across reloads
-    }
   }, [])
 
   const undoLastPick = useCallback(() => {
@@ -376,20 +285,19 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
     c.state.drafted.length = snap.draftedLengthBefore
     c.lastPick = null
     c.currentAuction = null
-    c.pendingAutoPlay = false
 
-    advanceUntilInputNeeded(c, watchList)
+    setupNextStep(c)
     bump()
-  }, [bump, watchList])
+  }, [bump])
 
   const restart = useCallback(
     (newSeed?: number) => {
       const s = newSeed ?? ref.current!.seed
       ref.current = createInternals(data, s, humanName)
-      advanceUntilInputNeeded(ref.current, watchList)
+      setupNextStep(ref.current)
       bump()
     },
-    [bump, data, humanName, watchList],
+    [bump, data, humanName],
   )
 
   const humanTeam = ctrl.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
@@ -407,7 +315,6 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
     currentAuction: ctrl.currentAuction,
     standing,
     seed: ctrl.seed,
-    speed,
     watchList,
     canUndo: ctrl.lastPick !== null,
     nominatePlayer,
@@ -417,7 +324,6 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
     passBid,
     confirmAndAdvance,
     toggleWatch,
-    setSpeed,
     undoLastPick,
     restart,
   }
