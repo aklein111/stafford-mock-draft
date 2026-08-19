@@ -37,11 +37,11 @@ export const BUDGET_PLAN_LABELS: Record<BudgetPlanArchetype, string> = {
 // reliably below their true value — measured directly, e.g. the pool's
 // single best player landing below `blended` in 97%+ of simulations
 // (checkVariance.ts). Steepening BALANCED gives the other ten bots a real
-// top slot too (~$59 at 0.75, before jitterTopSlot's per-draft swing), so
+// top slot too (~$46 at 0.77, before jitterTopSlot's per-draft swing), so
 // there's genuine competitive depth near the top instead of just one bot
-// with room to spend. Re-tuned against both calibrate.ts (so this doesn't
-// re-break the step 4 shape targets) and checkVariance.ts (so elite
-// players stop being one-sided).
+// with room to spend. Re-tuned (alongside jitterTopSlot below) against
+// both calibrate.ts, so this doesn't re-break the step 4 shape targets,
+// and checkVariance.ts, so elite players stop being one-sided.
 const DECAY_BY_ARCHETYPE: Record<BudgetPlanArchetype, number> = {
   STARS_AND_SCRUBS: 0.55,
   BALANCED: 0.77,
