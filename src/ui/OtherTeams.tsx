@@ -16,6 +16,7 @@ export function OtherTeams({ teams }: { teams: Team[] }) {
       <h2>Other Teams</h2>
       {teams.map((team) => {
         const open = openSlots(team).length
+        const filled = team.slots.filter((s) => s.filled !== null)
         return (
           <div className="team-card" key={team.id}>
             <div className="team-card-header">
@@ -25,6 +26,14 @@ export function OtherTeams({ teams }: { teams: Team[] }) {
             <div className="team-card-needs">
               {open} slot{open === 1 ? '' : 's'} left · needs: {neededPositions(team)}
             </div>
+            {filled.map((slot, i) => (
+              <div className="slot-row" key={i}>
+                <span className="slot-type">{slot.type}</span>
+                <span>
+                  {slot.filled!.player.name} <span style={{ color: '#9ca3af' }}>${slot.filled!.price}</span>
+                </span>
+              </div>
+            ))}
           </div>
         )
       })}
