@@ -15,7 +15,7 @@ import { createBotNominationStrategy, nextNominator } from '../sim/nomination'
 import { applyAuctionResult, isDraftComplete, type Bid } from '../sim/engine'
 import { computeBotBids, currentStanding, finalizeAuction } from '../sim/humanAuction'
 import { playerKey } from '../sim/valuation'
-import { canBidOnPosition, isRosterFull, legalMaxBid, type Team } from '../sim/roster'
+import { canBidOnPositionSafely, isRosterFull, legalMaxBid, type Team } from '../sim/roster'
 
 export type DraftPhase = 'nominating' | 'auctioning' | 'complete'
 export type Speed = 'instant' | '1x' | '4x'
@@ -183,7 +183,7 @@ function advanceOneBotStep(c: ControllerInternals, watchList: Set<string>): Step
 
   const humanTeam = c.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
   const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID)
-  const humanEligible = !isRosterFull(humanTeam) && canBidOnPosition(humanTeam, player.pos)
+  const humanEligible = !isRosterFull(humanTeam) && canBidOnPositionSafely(c.state.teams, c.state.undrafted, humanTeam, player.pos)
 
   if (humanEligible && shouldPauseForHuman(player, botBids, humanTeam, watchList)) {
     c.phase = 'auctioning'
@@ -271,7 +271,7 @@ export function useDraftController(data: DraftData, seed: number, humanName = 'Y
 
       const humanTeam = c.state.teams.find((t) => t.id === HUMAN_TEAM_ID)!
       const botBids = computeBotBids(c.state, player, c.botMaxBidFn, HUMAN_TEAM_ID)
-      const humanEligible = !isRosterFull(humanTeam) && canBidOnPosition(humanTeam, player.pos)
+      const humanEligible = !isRosterFull(humanTeam) && canBidOnPositionSafely(c.state.teams, c.state.undrafted, humanTeam, player.pos)
       c.phase = 'auctioning'
       c.currentAuction = { player, botBids, humanBid: 0, humanEligible, bidLog: [], nominationPointerBefore }
       bump()

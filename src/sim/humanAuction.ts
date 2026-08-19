@@ -13,7 +13,7 @@
 // of pre-committing to a ceiling.
 
 import type { DraftState } from './draftState'
-import { canBidOnPosition, isRosterFull, legalMaxBid, type Team } from './roster'
+import { canBidOnPositionSafely, isRosterFull, legalMaxBid, type Team } from './roster'
 import type { Player } from './types'
 import type { MaxBidFn } from './bots'
 import { DROP_EARLY_PROBABILITY, HESITATION_ZONE } from './constants'
@@ -21,12 +21,17 @@ import { settleBids, type AuctionResult, type Bid } from './engine'
 
 // Every eligible bot team's max bid for this player, computed once at
 // nomination time. Excludes the human's own team.
+//
+// Uses canBidOnPositionSafely (not the plain per-team canBidOnPosition) so
+// a bot can't take a thin-supply position for FLEX/BENCH value and strand
+// another team's dedicated slot for it — see roster.ts for the deadlock
+// this prevents.
 export function computeBotBids(state: DraftState, player: Player, botMaxBidFn: MaxBidFn, humanTeamId: number): Bid[] {
   const bids: Bid[] = []
   for (const team of state.teams) {
     if (team.id === humanTeamId) continue
     if (isRosterFull(team)) continue
-    if (!canBidOnPosition(team, player.pos)) continue
+    if (!canBidOnPositionSafely(state.teams, state.undrafted, team, player.pos)) continue
     const raw = botMaxBidFn(state, team, player)
     const capped = Math.min(raw, legalMaxBid(team))
     if (capped >= 1) bids.push({ team, maxBid: capped })
