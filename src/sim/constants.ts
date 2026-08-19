@@ -120,6 +120,17 @@ export const PLAN_TOP_JITTER_MAX = 2.0
 // bench RB/WR/TE. That quantity overshoot looks like a separate,
 // still-open problem, not something this factor controls much on its own.
 export const BACKUP_QB_NEED_FACTOR = 0.5
+
+// User report: defenses were going for way too much (checkVariance.ts had
+// already flagged this independently — e.g. the Rams' DEF, blended 6,
+// clearing at a mean price of $9.1 across 200 drafts). A real manager
+// doesn't pay premium prices for a DEF no matter how the room's noise/
+// inflation/lock-in multipliers stack up on a given nomination — it's a
+// $1-2 streaming slot. A hard cap on every bot's max bid is simpler and
+// more reliable than trying to retune the multiplicative chain (timing,
+// roomDemand, inflation, lockIn) down to a $2 ceiling for one position
+// without also flattening it for everyone else.
+export const DEF_MAX_BID = 2
 export const LATE_DRAFT_SLOTS_THRESHOLD = 4
 export const LATE_DRAFT_MAX_BOOST = 0.25 // "up to 1.25"
 export const RICH_PER_SLOT_THRESHOLD = 8

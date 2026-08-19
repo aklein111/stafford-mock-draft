@@ -2,6 +2,7 @@ import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
 import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
+import { DEF_MAX_BID } from './constants'
 import { traitsFromOwnerDraw, type BotTraits } from './botTraits'
 import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 import { getHistoricalDerived } from './historicalResiduals'
@@ -89,12 +90,14 @@ export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, no
 // inflation, and a per-player roll for "locked in" irrationality — scaled
 // down by the bot's restraint (Fix 2b: a real manager sets a number and
 // stops, rather than pushing to the edge of what it can technically
-// afford) — then capped at what the bot's own budget plan has reserved for
-// every other slot it still needs to fill (Fix 2a), itself tilted by this
-// bot's drawn early-spending eagerness (BOT_PERSONALITIES.md). The engine
-// separately enforces the hard legal-max-bid floor on top of all of this,
-// so neither this function nor its caller needs to worry about a team
-// going roster-incomplete.
+// afford) — DEF is hard-capped at DEF_MAX_BID regardless of how that chain
+// stacks up, since a real manager streams defenses rather than paying a
+// premium for one — then capped at what the bot's own budget plan has
+// reserved for every other slot it still needs to fill (Fix 2a), itself
+// tilted by this bot's drawn early-spending eagerness
+// (BOT_PERSONALITIES.md). The engine separately enforces the hard
+// legal-max-bid floor on top of all of this, so neither this function nor
+// its caller needs to worry about a team going roster-incomplete.
 // backupQbFactor passes straight through to needFactor.
 export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: number): MaxBidFn {
   const byTeamId = new Map(botStates.map((b) => [b.teamId, b]))
@@ -111,6 +114,7 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const lockIn = rollLockIn(state.rng)
 
     let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * bot.traits.restraint
+    if (player.pos === 'DEF') maxBid = Math.min(maxBid, DEF_MAX_BID)
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
     const reserveScale = earlySpendReserveScale(state, bot.drawnTraits.shareSpentByNom40)
