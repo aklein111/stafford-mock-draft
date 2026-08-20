@@ -22,6 +22,12 @@ export interface BotTraits {
   disciplineDecay: number // 0.5-1.5
   noiseScale: number // 0.7-1.3
   restraint: number // 0.85-0.95, REVISIONS.md Fix 2b
+  // How hard this bot chases a thinning tier (tierPanic.ts). 0 = never
+  // panics, 1 = full PANIC_MAX_BOOST when its tier empties out under a
+  // full room. The user's report was that "*certain* teams begin to get
+  // scared" — not all of them — so this is drawn per draft across the
+  // whole range rather than being a constant everyone shares.
+  panicProneness: number // 0-1
 }
 
 const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE']
@@ -51,5 +57,6 @@ export function traitsFromOwnerDraw(drawn: DrawnOwnerTraits, rng: RNG): BotTrait
     disciplineDecay: randRange(rng, 0.5, 1.5),
     noiseScale: randRange(rng, 0.7, 1.3),
     restraint: randRange(rng, RESTRAINT_MIN, RESTRAINT_MAX),
+    panicProneness: randRange(rng, 0, 1),
   }
 }

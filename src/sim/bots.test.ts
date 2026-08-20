@@ -32,6 +32,7 @@ const neutralTraits: BotTraits = {
   disciplineDecay: 1,
   noiseScale: 1,
   restraint: 1,
+  panicProneness: 0,
 }
 
 const neutralDrawnTraits: DrawnOwnerTraits = {
@@ -54,6 +55,7 @@ function makeBotState(overrides: Partial<BotState> = {}): BotState {
     traits: neutralTraits,
     valuations: new Map(),
     budgetPlan: new Array(14).fill(200 / 14),
+    privateTiers: new Map(),
     ...overrides,
   }
 }

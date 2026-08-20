@@ -7,6 +7,7 @@ import { traitsFromOwnerDraw, type BotTraits } from './botTraits'
 import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 import { getHistoricalDerived } from './historicalResiduals'
 import { BOT_OWNERS, drawOwnerTraits, type DrawnOwnerTraits } from './ownerProfiles'
+import { buildPrivateTiers, tierPanicFactor, type PrivateTiers } from './tierPanic'
 import {
   buildBotValuations,
   computeInflation,
@@ -50,6 +51,9 @@ export interface BotState {
   traits: BotTraits
   valuations: Map<string, number>
   budgetPlan: number[]
+  // This bot's own read of where the talent cliffs are, cut from its own
+  // valuations above — drives the late-draft scarcity panic (tierPanic.ts).
+  privateTiers: PrivateTiers
 }
 
 // Builds one persistent bot per team id: BOT_PERSONALITIES.md's per-draft
@@ -70,13 +74,15 @@ export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, no
     const owner = BOT_OWNERS[i % BOT_OWNERS.length]
     const drawnTraits = drawOwnerTraits(owner, rng)
     const traits = traitsFromOwnerDraw(drawnTraits, rng)
+    const valuations = buildBotValuations(data.currentPlayers, traits, rng, residualPool, noiseK, centering)
     return {
       teamId,
       name: owner.name,
       drawnTraits,
       traits,
-      valuations: buildBotValuations(data.currentPlayers, traits, rng, residualPool, noiseK, centering),
+      valuations,
       budgetPlan: generateBudgetPlan(drawnTraits, data.meta.budget, starterCount, benchCount),
+      privateTiers: buildPrivateTiers(data.currentPlayers, valuations),
     }
   })
 }
@@ -123,7 +129,10 @@ function defAuctionCap(state: DraftState, player: Player): number {
 // much real room-wide competition still exists for the position
 // (roomDemandFactor — step 5: a bidding team's own need isn't what makes a
 // late-draft player cheap, a lack of *other* competing bidders is), live
-// inflation, and a per-player roll for "locked in" irrationality — scaled
+// inflation, a late-draft scarcity panic when this bot's own tier for the
+// position is running out under a room that still needs one (tierPanic.ts
+// — the one term here that can push a *late* price up rather than down),
+// and a per-player roll for "locked in" irrationality — scaled
 // down by the bot's restraint (Fix 2b: a real manager sets a number and
 // stops, rather than pushing to the edge of what it can technically
 // afford) — DEF is capped per defAuctionCap regardless of how that chain
@@ -154,8 +163,9 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const roomDemand = roomDemandFactor(state, player.pos)
     const inflation = inflationFactor(computeInflation(state))
     const lockIn = rollLockIn(state.rng)
+    const panic = tierPanicFactor(state, team, player, bot.privateTiers, bot.valuations, bot.traits.panicProneness)
 
-    let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * bot.traits.restraint
+    let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * panic * bot.traits.restraint
     if (player.pos === 'DEF') maxBid = Math.min(maxBid, defAuctionCap(state, player))
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
