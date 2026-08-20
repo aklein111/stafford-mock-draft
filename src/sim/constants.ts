@@ -224,6 +224,41 @@ export const NOMINATION_VALUE_EXPONENT = 2.85
 // perfectly").
 export const INFLATION_DAMPING = 0.6
 
+// Tier-scarcity panic (tierPanic.ts) — see that file's header for the
+// user report and the leagueHistory.rawPicks evidence behind it. Prices
+// late in a real draft aren't a smooth decay; they're cheap on average
+// with occasional violent spikes when a tier runs dry under a full room.
+//
+// TIER_BREAK_GAP: how far below the top of the current tier a player's
+// value has to fall to start a new one, as a fraction of that tier's top
+// value. Cutting on each bot's *own* valuations (user: "not strict tiers
+// like you have but their own tiers") means two bots disagree about where
+// the cliff is and panic at different moments.
+export const TIER_BREAK_GAP = 0.15
+
+// How much a fully-panicked bot will pay over its usual number, before
+// the per-draft proneness draw scales it down. Real decile-8 picks reach
+// 2x+ their target, but that tail is the *combined* result of panic on
+// top of the existing noise/lock-in/need multipliers, so this doesn't
+// need to cover it alone.
+export const PANIC_MAX_BOOST = 0.5
+
+// Fraction of the draft before which panic can't happen at all. Early on
+// a thin top tier is normal and every manager knows more talent is
+// coming; running out is only a credible threat once most of the board is
+// gone. Matches the user's "this happens later on in the draft" and the
+// rawPicks residuals, which only turn back up from decile 8 onward.
+export const PANIC_START_PROGRESS = 0.4
+
+// Panic on a slot the player doesn't dedicatedly fill (a FLEX/BENCH
+// pickup) is real but much weaker than panic over a starting job.
+export const PANIC_BENCH_SCALE = 0.4
+
+// A bot's own valuation must clear this for scarcity to register at all —
+// nobody gets into a bidding war over the last replacement-level $1-2
+// filler, however thin that "tier" happens to be.
+export const PANIC_MIN_VALUE = 3
+
 // BOT_PERSONALITIES.md — turning a bot's per-draft owner-trait draw
 // (ownerProfiles.ts) into behaviour. qbShare/rbShare/wrShare/teShare and
 // top3Concentration drive the budget plan directly (budgetPlan.ts) *and*

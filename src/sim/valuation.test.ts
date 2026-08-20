@@ -41,7 +41,10 @@ const neutralTraits: BotTraits = {
   starPreference: 0,
   disciplineDecay: 1,
   noiseScale: 1,
-  restraint: 1, // unused by valuation.ts's formulas; included only to satisfy the type
+  // Neither of these is used by valuation.ts's formulas; included only to
+  // satisfy the type.
+  restraint: 1,
+  panicProneness: 0,
 }
 
 // RAW_DATA_ADDENDUM.md Method A replaced the additive normal-noise term
