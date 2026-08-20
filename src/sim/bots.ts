@@ -2,7 +2,7 @@ import { canBidOnPosition, legalMaxBid, type Team } from './roster'
 import type { DraftState } from './draftState'
 import type { DraftData, Player } from './types'
 import type { RNG } from './rng'
-import { BOT_MAX_TE, DEF_MAX_BID } from './constants'
+import { BOT_MAX_TE, DEF_MAX_BID, DEF_PREMIUM_TIERS } from './constants'
 import { traitsFromOwnerDraw, type BotTraits } from './botTraits'
 import { computePlannedMaxBid, generateBudgetPlan } from './budgetPlan'
 import { getHistoricalDerived } from './historicalResiduals'
@@ -81,6 +81,42 @@ export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, no
   })
 }
 
+// A stable pseudo-random value in [0, 1) for this exact auction — same
+// player, same pick number — rather than a fresh draw from state.rng().
+// gatherBids calls maxBidFn once per *team* for the same nomination, and
+// state.rng() advances on every call, so drawing straight from it here
+// would give every eligible team an independent roll instead of one
+// shared answer for the whole auction. That distinction matters for
+// defAuctionCap below: an independent per-team roll answers "does at
+// least one of ~11 eligible teams roll premium," which converges near
+// 100% long before any individual team's own probability gets close to
+// the real ~24% DEF-at-$2 rate — a shared roll answers "is this specific
+// nomination a premium one," which is the question that actually
+// reproduces the real distribution. A simple FNV-1a-style hash, not
+// cryptographic, just needs to look random and stay put for the auction.
+function auctionRoll(state: DraftState, player: Player): number {
+  let h = (2166136261 ^ state.pickNumber) >>> 0
+  const key = `${player.name}|${player.team}`
+  for (let i = 0; i < key.length; i++) {
+    h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0
+  }
+  return h / 4294967296
+}
+
+// leagueHistory.rawPicks: DEF clears at $1 72.0% of the time, $2 23.7%,
+// $3 3.2% (see DEF_PREMIUM_TIERS's own comment in constants.ts for the
+// full context and why a shared-per-auction roll is what gets that
+// distribution right instead of a flat cap).
+function defAuctionCap(state: DraftState, player: Player): number {
+  const roll = auctionRoll(state, player)
+  let cumulative = 0
+  for (const tier of DEF_PREMIUM_TIERS) {
+    cumulative += tier.probability
+    if (roll < cumulative) return tier.cap
+  }
+  return DEF_MAX_BID
+}
+
 // The full maxBid function (spec §3.3, adjusted per REVISIONS.md Fixes
 // 2a-2b and step 5's room-demand fix): the bot's private anchor valuation,
 // adjusted by where we are in the draft, this team's own roster need, how
@@ -90,10 +126,11 @@ export function createBotStates(teamIds: number[], data: DraftData, rng: RNG, no
 // inflation, and a per-player roll for "locked in" irrationality — scaled
 // down by the bot's restraint (Fix 2b: a real manager sets a number and
 // stops, rather than pushing to the edge of what it can technically
-// afford) — DEF is hard-capped at DEF_MAX_BID regardless of how that chain
-// stacks up, since a real manager streams defenses rather than paying a
-// premium for one, and a bot already holding BOT_MAX_TE tight ends won't
-// bid on another one at all — then capped at what the bot's own budget plan has
+// afford) — DEF is capped per defAuctionCap regardless of how that chain
+// stacks up, since a real manager mostly streams defenses rather than
+// paying a premium for one (occasionally they do — see defAuctionCap),
+// and a bot already holding BOT_MAX_TE tight ends won't bid on another
+// one at all — then capped at what the bot's own budget plan has
 // reserved for every other slot it still needs to fill (Fix 2a), itself
 // tilted by this bot's drawn early-spending eagerness
 // (BOT_PERSONALITIES.md). The engine separately enforces the hard
@@ -119,7 +156,7 @@ export function createRealBotMaxBidFn(botStates: BotState[], backupQbFactor?: nu
     const lockIn = rollLockIn(state.rng)
 
     let maxBid = anchor * timing * need * roomDemand * inflation * lockIn * bot.traits.restraint
-    if (player.pos === 'DEF') maxBid = Math.min(maxBid, DEF_MAX_BID)
+    if (player.pos === 'DEF') maxBid = Math.min(maxBid, defAuctionCap(state, player))
     if (isPoorPerSlot(team)) maxBid = Math.min(maxBid, 1)
 
     const reserveScale = earlySpendReserveScale(state, bot.drawnTraits.shareSpentByNom40)

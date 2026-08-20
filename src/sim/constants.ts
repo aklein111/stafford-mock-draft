@@ -135,7 +135,29 @@ export const BACKUP_QB_NEED_FACTOR = 0.5
 // more reliable than trying to retune the multiplicative chain (timing,
 // roomDemand, inflation, lockIn) down to a $2 ceiling for one position
 // without also flattening it for everyone else.
-export const DEF_MAX_BID = 2
+//
+// A single flat cap (originally $2, applied to every bot identically)
+// overshot the other direction: a real English auction only needs *two*
+// bidders capped the same to settle right at that cap, and DEF is a
+// starter-only slot every team still needs for most of the draft, so
+// almost every DEF nomination had 2+ eligible bidders — measured
+// directly, 87.8% of simulated DEF picks cleared at exactly $2 against
+// leagueHistory.rawPicks' real split of 72.0% $1 / 23.7% $2 / 3.2% $3
+// (dropping one $18 outlier out of 93 real picks as unrepeatable noise,
+// not a pattern to model). DEF_TIER_PROBABILITY rolls which cap applies —
+// see defAuctionCapRoll (bots.ts) for why that roll has to be shared
+// across every bidder in the same auction rather than drawn
+// independently per team: an independent per-team roll means "does at
+// least one of ~11 eligible teams roll premium," which converges near
+// 100% long before any individual team's roll probability gets anywhere
+// close to 24%.
+// Checked in order — first match wins, remainder (~0.731) falls through
+// to the DEF_MAX_BID floor below.
+export const DEF_PREMIUM_TIERS: { cap: number; probability: number }[] = [
+  { cap: 3, probability: 0.032 },
+  { cap: 2, probability: 0.237 },
+]
+export const DEF_MAX_BID = 1
 
 // User report: individual bots (Loewy specifically) were hoarding tight
 // ends — TE is flex/bench-eligible, so nothing previously stopped a bot
