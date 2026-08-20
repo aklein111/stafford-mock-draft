@@ -96,3 +96,60 @@ describe('restraint (REVISIONS.md Fix 2b)', () => {
     expect(bid).toBeLessThanOrEqual(50 * 0.85 + 1) // +1 for rounding
   })
 })
+
+describe('DEF pricing (user report: DEF was clearing at $2 87.8% of the time vs. the real ~24%)', () => {
+  const defPlayer = makePlayer({ name: 'Test DEF', pos: 'DEF', blended: 6 }) // deliberately high so it would clear well above $1-3 uncapped
+
+  it('every eligible team sees the same cap for the same nomination (the shared-roll property the fix depends on)', () => {
+    const teamA = createTeam(1, 'A', 200, ['DEF'], 0)
+    const teamB = createTeam(2, 'B', 200, ['DEF'], 0)
+    const state = createInitialState(draftData, 1)
+    state.teams = [teamA, teamB]
+    state.pickNumber = 37
+
+    const botA = makeBotState({ teamId: 1, valuations: new Map([['Test DEF|XXX', 200]]) })
+    const botB = makeBotState({ teamId: 2, valuations: new Map([['Test DEF|XXX', 200]]) })
+    const maxBidFn = createRealBotMaxBidFn([botA, botB])
+
+    const bidA = maxBidFn(state, teamA, defPlayer)
+    const bidB = maxBidFn(state, teamB, defPlayer)
+    expect(bidA).toBe(bidB) // both bots must land on the same cap tier for this exact auction
+    expect([1, 2, 3]).toContain(bidA)
+  })
+
+  it('the cap tier changes with pick number (not stuck at a single value forever)', () => {
+    const team = createTeam(1, 'A', 200, ['DEF'], 0)
+    const bot = makeBotState({ valuations: new Map([['Test DEF|XXX', 200]]) })
+    const maxBidFn = createRealBotMaxBidFn([bot])
+
+    const caps = new Set<number>()
+    for (let pick = 0; pick < 60; pick++) {
+      const state = createInitialState(draftData, 1)
+      state.teams = [team]
+      state.pickNumber = pick
+      caps.add(maxBidFn(state, team, defPlayer))
+    }
+    expect(caps.size).toBeGreaterThan(1)
+    for (const cap of caps) expect([1, 2, 3]).toContain(cap)
+  })
+
+  it('across many nominations, the cap distribution roughly matches the real ~72/24/3 split', () => {
+    const team = createTeam(1, 'A', 200, ['DEF'], 0)
+    const bot = makeBotState({ valuations: new Map([['Test DEF|XXX', 200]]) })
+    const maxBidFn = createRealBotMaxBidFn([bot])
+
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0 }
+    const n = 2000
+    for (let pick = 0; pick < n; pick++) {
+      const state = createInitialState(draftData, 1)
+      state.teams = [team]
+      state.pickNumber = pick
+      const player = makePlayer({ name: `DEF${pick}`, pos: 'DEF', blended: 6 })
+      counts[maxBidFn(state, team, player)]++
+    }
+    expect(counts[1] / n).toBeGreaterThan(0.6)
+    expect(counts[1] / n).toBeLessThan(0.85)
+    expect(counts[2] / n).toBeGreaterThan(0.1)
+    expect(counts[3] / n).toBeLessThan(0.1)
+  })
+})
